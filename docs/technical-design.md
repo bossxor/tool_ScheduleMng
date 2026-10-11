@@ -1,4 +1,4 @@
-# 기술·데이터 설계 v0.2
+# 하루결 기술·데이터 설계 v0.3
 
 상태: 제품 설계를 구현하기 위한 제안. 앱 코드와 의존성 버전은 아직 없다.
 
@@ -53,9 +53,9 @@ createdAt·updatedAt·completedAt·deletedAt 등 기록 시각은 UTC epoch mill
 
 | 엔터티 | 주요 필드·제약 |
 |---|---|
-| Habit | id, name(1~100자), note(최대 20,000자), startDate, zoneId, sortOrder, reminderTime?, archivedAt?, createdAt, updatedAt |
-| HabitGoal | id, habitId FK, effectiveFrom, mode(DAILY/WEEKDAYS/WEEKLY_COUNT), weekdays?, targetDays?, unique(habitId, effectiveFrom) |
-| HabitLog | id, habitId FK, date, checkedAt, unique(habitId, date) |
+| Habit | id, name(1~100자), note(최대 20,000자), measureType(CHECK/QUANTITY/DURATION), unit?, startDate, zoneId, sortOrder, reminderTime?, archivedAt?, createdAt, updatedAt |
+| HabitGoal | id, habitId FK, effectiveFrom, mode(DAILY/WEEKDAYS/WEEKLY_COUNT), weekdays?, targetDays?, targetAmount, unique(habitId, effectiveFrom) |
+| HabitLog | id, habitId FK, date, amount, revision, updatedAt, unique(habitId, date) |
 | HabitReminderDelivery | habitId FK/PK, date, triggerAt, deliveredAt? |
 | TaskList | id, name(1~100자), color, sortOrder, isInbox |
 | Task | id, listId FK, title(1~500자), note(최대 20,000자), priority(0~3), sortOrder, createdAt, updatedAt, completedAt?, deletedAt? |
@@ -92,25 +92,34 @@ Task.listId, Task.completedAt, Task.deletedAt, TaskSchedule.dueDate, ChecklistIt
 FK를 활성화하며 작업 영구 삭제는 연결 행을 cascade 삭제한다. 목록 삭제는 받은함 이동과 삭제를 한 트랜잭션으로 처리한다.
 휴지통 이동은 Task.deletedAt만 설정하고 관계를 보존한다. 태그 삭제는 연결만 지우고 작업을 보존한다.
 HabitLog.date와 HabitGoal.habitId를 인덱싱한다. 습관 영구 삭제는 목표·체크인·발송 상태를 cascade 삭제한다.
+알림 시각 개수와 과거 수정 범위는 답변 대기다. 현재 reminderTime과 발송 상태 구조는 하루 한 시각 제안이며, 여러 시각을 선택하면 습관 알림을 별도 테이블로 분리한다.
 
 ### 습관·체크인 저장 및 계산 규칙
 
-- 습관은 작업과 별도 엔터티다. M1은 하루 한 번 완료 여부만 기록한다. 미완료 행은 만들지 않는다.
+- 습관은 작업과 별도 엔터티다. 날짜별 합계 행 하나를 저장하며 부분 기록도 유지한다. 개별 추가 이력은 M1에 저장하지 않는다.
+- CHECK는 amount 0 또는 1, targetAmount 1이다. QUANTITY는 소수 둘째 자리 단위의 정수로 저장한다(1잔=100). DURATION은 정수 분이다.
+- QUANTITY의 unit은 1~20자 필수, DURATION은 ‘분’으로 고정하고 CHECK의 unit은 null이다. measureType·단위는 생성 후 불변이다.
+- amount는 0~1,000,000,000, targetAmount는 1~1,000,000,000 범위다. 입력·합산·복원에서 범위와 유형을 검증한다.
+- 수량 파싱은 기기 소수점 형식을 따르고 정확한 정수 변환을 사용한다. 소수 3자리 이상·NaN·무한대·음수·범위 초과는 거부한다.
+- 달성 여부는 amount >= 당시 목표의 targetAmount로 계산한다. 별도 완료 플래그는 저장하지 않는다. 초과 실제량은 보존하고 UI 진행률만 100%로 제한한다.
 - HabitLog.date는 습관 생성 시 저장한 zoneId의 LocalDate다. 여행 중에도 기록 날짜를 재배치하지 않는다.
 - 습관의 시간대는 M1에서 변경하지 않는다. 상세에 시간대를 표시하고 오늘 화면의 날짜도 이를 기준으로 표시한다.
 - DAILY는 모든 날짜, WEEKDAYS는 선택한 1~7개 요일, WEEKLY_COUNT는 월~일 중 targetDays(1~7)일이다.
 - 목표 필드는 mode별로 검증한다. 사용하지 않는 weekdays 또는 targetDays는 null이어야 한다.
 - HabitGoal은 시작일부터 유효한 첫 목표를 가진다. 특정 날짜에는 effectiveFrom이 그 날짜 이하인 최신 목표를 사용한다.
 - 목표 편집은 해당 습관 시간대의 내일부터 적용한다. 같은 적용일의 재편집은 기존 예약 목표를 교체한다.
-- 시작일과 과거 목표는 변경하지 않는다. 주 N일 목표를 포함하는 mode·targetDays 변경은 다음 월요일부터 적용해 한 주의 기준을 보존한다.
-- 체크인은 날짜 검증 후 insert-if-absent로 저장한다. 중복 탭·재시도·알림 액션은 한 기록만 만든다.
-- 취소는 해당 habitId/date를 삭제하며 재시도해도 결과가 같다. 상태 반전 요청 대신 명시적 체크인·취소를 사용한다.
+- 시작일과 과거 목표는 변경하지 않는다. 주 N일 목표를 포함하는 mode·targetDays·targetAmount 변경은 다음 월요일부터 적용해 한 주의 기준을 보존한다.
+- 기록 요청은 habitId/date, expectedRevision, 새 총량을 전달한다. DB 트랜잭션에서 버전 일치 시 저장하고 revision을 증가시킨다.
+- 새 날짜는 expectedRevision 0으로 생성한다. 기존 행의 revision은 1 이상이다. 중복·오래된 요청은 덮어쓰지 않고 최신 값으로 화면을 갱신한다.
+- ＋1은 화면의 최신 총량에 수량 단위 1(저장값 100)을 더한 절대값 요청이다. UI 요청을 순서대로 처리해 빠른 조작과 재시도를 구분한다.
+- CHECK 취소와 수량·시간 초기화는 총량 0을 저장한다. 행과 revision은 남겨 이전 요청이 취소 후 기록을 되살리지 않게 한다.
+- 시간형은 수동 분 입력만 제공한다. 종료 시각·실행 타이머·백그라운드 서비스는 M1에 추가하지 않는다.
 - 과거 수정은 startDate부터 오늘까지 허용하되 당시 요일 목표를 검증한다. 미래 기록과 비대상 날짜는 거부한다.
-- 주 N일 목표를 초과한 날짜도 체크인할 수 있지만 달성률은 100%를 넘지 않는다.
+- 주 N일 목표를 초과한 날짜도 기록할 수 있다. 해당 날짜 목표량을 채운 날만 달성 일수로 세며 달성률은 100%를 넘지 않는다.
 - DAILY/WEEKDAYS 연속 달성은 연속된 대상 날짜만 센다. 비대상 날짜는 건너뛰고 아직 끝나지 않은 오늘은 미달성으로 끊지 않는다.
 - WEEKLY_COUNT 연속 달성은 주 단위다. 목표를 채운 현재 주는 포함하되 진행 중인 미달성 주는 연속 기록을 끊지 않는다.
 - 시작일이 주 중간이면 첫 주 목표는 targetDays와 시작일부터 일요일까지 남은 날짜 수 중 작은 값이다.
-- 기간 달성률: 일·요일 목표는 체크인한 대상 날짜/대상 날짜 수, 주 목표는 각 주의 min(체크인 일수, 목표 일수) 합/주별 목표 합이다.
+- 기간 달성률: 일·요일 목표는 목표량을 달성한 대상 날짜/대상 날짜 수, 주 목표는 각 주의 min(달성 일수, 목표 일수) 합/주별 목표 합이다.
 - 통계 분모는 시작일부터 어제까지의 일 목표 또는 종료된 주 목표만 사용한다. 진행 중인 오늘·주는 별도 진행률로 표시한다.
 - 선택 기간 경계의 일부 주는 주간 달성률에서 제외한다. 시작일로 잘린 첫 주는 위 보정 목표를 사용한다. 분모가 0이면 ‘집계할 기록 없음’이다.
 - 목표 mode가 바뀐 전후 구간의 일 단위·주 단위 연속 달성은 별도 표시한다. 단위가 다른 기록을 하나의 숫자로 합치지 않는다.
@@ -119,6 +128,8 @@ HabitLog.date와 HabitGoal.habitId를 인덱싱한다. 습관 영구 삭제는 �
 
 예: 월·수·금 독서는 월·수 완료 시 2회 연속이다. 화요일은 끊김이 아니다.
 주 3일 운동은 같은 날 중복 체크인해도 1일이며 월·수·금 체크인 시 3/3일이다.
+물 8잔 목표에 3잔 기록은 amount=300, targetAmount=800이다. 8잔에 달성하며 9잔은 실제 기록 900을 유지한다.
+독서 30분 목표에 20분은 부분 기록이고 30분부터 그날 달성으로 집계한다.
 
 ## 4. 날짜·반복 규칙
 
@@ -150,8 +161,9 @@ DB가 원본이다. 작업을 저장한 뒤 알림을 예약·취소한다. OS �
 앱 시작·기기 재부팅·시간 및 시간대 변경·정확한 알람 권한 부여 후 DB에서 예약을 복구한다.
 반복 작업은 현재 활성 회차의 알림만 예약한다. 완료·삭제·날짜 변경 시 기존 예약과 게시 알림을 취소한다.
 습관은 저장된 시간대의 다음 대상 날짜 알림을 예약한다. 발송 후 다음 대상 날짜를 예약하며 주 목표·보관 여부를 다시 검사한다.
-체크인·취소·목표 변경·보관 시 알림을 재계산한다. 체크인한 날짜와 주 목표 달성 후의 날짜는 발송하지 않는다.
-습관 알림 액션은 habitId/date를 명시한 체크인이다. 지난 날짜 액션을 오늘 기록으로 바꾸지 않는다.
+기록량 수정·목표 변경·보관 시 알림을 재계산한다. 부분 기록은 유지하고 날짜 목표 또는 주 목표를 달성하면 남은 알림을 취소한다.
+완료형 알림은 날짜를 명시한 체크인을 제공한다. 수량·시간형은 해당 날짜 입력 화면을 연다. 부분 기록을 임의로 목표 달성 처리하지 않는다.
+지난 날짜 액션은 당시 날짜를 검증하며 오늘 기록으로 바꾸지 않는다.
 발송 상태는 HabitReminderDelivery에 저장하고 재부팅·권한 변경 후 재예약 시 중복 발송을 차단한다.
 
 - Android 13 이상에서 알림 권한은 첫 알림 설정 시 맥락과 함께 요청한다.
@@ -174,7 +186,7 @@ DB가 원본이다. 작업을 저장한 뒤 알림을 예약·취소한다. OS �
 1. 내보내기는 일관된 DB 스냅샷을 읽는다. 파일 저장 실패는 기존 DB에 영향을 주지 않는다.
 2. 복원은 선택 파일을 임시로 파싱한다. 최대 20MiB, 항목 합계 최대 100,000개로 제한한다.
 3. 지원 버전, 필수 필드, 길이·열거값·날짜·시간대, 중복 ID, FK, 받은함 존재를 검증한다.
-   습관별 시작 목표, 목표 mode별 필드, 날짜별 체크인 중복·유효 범위도 검증한다.
+   습관별 시작 목표, 목표 mode·measureType별 필드, 단위·정수량·revision, 날짜별 기록 중복·유효 범위도 검증한다.
 4. 현재 항목 수와 복원 항목 수를 보여주고 **현재 데이터 전체 교체**를 명시해 확인받는다.
 5. 교체 전 현재 데이터의 복구 스냅샷을 앱 내부 파일에 저장한다. 저장 실패하면 복원을 중단한다.
 6. 한 DB 트랜잭션으로 교체하고 검증 실패 시 rollback한다. 성공 후 OS 알림을 전체 재계산한다.
