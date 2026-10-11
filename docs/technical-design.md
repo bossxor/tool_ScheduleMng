@@ -1,4 +1,4 @@
-# 하루결 기술·데이터 설계 v0.3
+# 하루결 기술·데이터 설계 v0.4
 
 상태: 제품 설계를 구현하기 위한 제안. 앱 코드와 의존성 버전은 아직 없다.
 
@@ -16,6 +16,7 @@
 | 테스트 | JUnit, Room 기기 테스트, Compose UI 테스트 | 날짜 계산·관계·사용 흐름 검증 |
 
 최소 지원 버전은 Android 8.0/API 26을 제안한다. 실제 사용자 기기 확인 후 확정한다.
+우선 검증 기기는 사용자 지정 갤럭시 S26 울트라다. 설치된 Android 버전과 절전 설정은 기기 검증 때 확인한다.
 compileSdk·targetSdk·라이브러리 버전은 구현 시작 시 공식 안정 버전과 배포 요구사항을 확인해 고정한다.
 M1에는 서버, 로그인, 네트워크 의존 기능, 외부 분석 SDK를 넣지 않는다.
 
@@ -53,10 +54,13 @@ createdAt·updatedAt·completedAt·deletedAt 등 기록 시각은 UTC epoch mill
 
 | 엔터티 | 주요 필드·제약 |
 |---|---|
-| Habit | id, name(1~100자), note(최대 20,000자), measureType(CHECK/QUANTITY/DURATION), unit?, startDate, zoneId, sortOrder, reminderTime?, archivedAt?, createdAt, updatedAt |
+| Habit | id, name(1~100자), note(최대 20,000자), measureType(CHECK/QUANTITY/DURATION), unit?, startDate, zoneId, sortOrder, archivedAt?, createdAt, updatedAt |
 | HabitGoal | id, habitId FK, effectiveFrom, mode(DAILY/WEEKDAYS/WEEKLY_COUNT), weekdays?, targetDays?, targetAmount, unique(habitId, effectiveFrom) |
 | HabitLog | id, habitId FK, date, amount, revision, updatedAt, unique(habitId, date) |
-| HabitReminderDelivery | habitId FK/PK, date, triggerAt, deliveredAt? |
+| HabitReminder | id, habitId FK, localTime, unique(habitId, localTime) |
+| HabitReminderDelivery | reminderId FK/PK, date, triggerAt, deliveredAt? |
+| DailySummaryDelivery | singletonId PK, localDate, triggerAt, deliveredAt? |
+| HabitTimer | singletonId PK, sessionId unique, habitId FK, date, state(RUNNING/PAUSED/SAVED), accumulatedMs, segmentStartedElapsedMs?, bootMarker?, checkpointMs, updatedAt |
 | TaskList | id, name(1~100자), color, sortOrder, isInbox |
 | Task | id, listId FK, title(1~500자), note(최대 20,000자), priority(0~3), sortOrder, createdAt, updatedAt, completedAt?, deletedAt? |
 | ChecklistItem | id, taskId FK, text(1~500자), isDone, sortOrder |
@@ -77,7 +81,9 @@ ReminderDelivery는 발송 상태와 미루기 상태를 저장한다. 알림 ID
 erDiagram
     Habit ||--|{ HabitGoal : goals
     Habit ||--o{ HabitLog : checkins
-    Habit ||--o| HabitReminderDelivery : delivery
+    Habit ||--o{ HabitReminder : reminders
+    HabitReminder ||--o| HabitReminderDelivery : delivery
+    Habit ||--o| HabitTimer : measurement
     TaskList ||--o{ Task : contains
     Task ||--o{ ChecklistItem : contains
     Task ||--o{ TaskTag : tagged
@@ -92,12 +98,13 @@ Task.listId, Task.completedAt, Task.deletedAt, TaskSchedule.dueDate, ChecklistIt
 FK를 활성화하며 작업 영구 삭제는 연결 행을 cascade 삭제한다. 목록 삭제는 받은함 이동과 삭제를 한 트랜잭션으로 처리한다.
 휴지통 이동은 Task.deletedAt만 설정하고 관계를 보존한다. 태그 삭제는 연결만 지우고 작업을 보존한다.
 HabitLog.date와 HabitGoal.habitId를 인덱싱한다. 습관 영구 삭제는 목표·체크인·발송 상태를 cascade 삭제한다.
-알림 시각 개수와 과거 수정 범위는 답변 대기다. 현재 reminderTime과 발송 상태 구조는 하루 한 시각 제안이며, 여러 시각을 선택하면 습관 알림을 별도 테이블로 분리한다.
+습관 알림 시각은 별도 HabitReminder 행으로 저장한다. 최대 5개 제안, 같은 시각 중복 금지다.
+하루 요약 enabled/time은 DataStore, 날짜별 발송 상태는 Room에 둔다. 두 저장소 갱신 중 앱 종료 시 다음 실행의 예약 재검사로 복구한다.
 
 ### 습관·체크인 저장 및 계산 규칙
 
 - 습관은 작업과 별도 엔터티다. 날짜별 합계 행 하나를 저장하며 부분 기록도 유지한다. 개별 추가 이력은 M1에 저장하지 않는다.
-- CHECK는 amount 0 또는 1, targetAmount 1이다. QUANTITY는 소수 둘째 자리 단위의 정수로 저장한다(1잔=100). DURATION은 정수 분이다.
+- CHECK는 amount 0 또는 1, targetAmount 1이다. QUANTITY는 소수 둘째 자리 단위의 정수로 저장한다(1잔=100). DURATION은 정수 초다(30분 목표=1,800).
 - QUANTITY의 unit은 1~20자 필수, DURATION은 ‘분’으로 고정하고 CHECK의 unit은 null이다. measureType·단위는 생성 후 불변이다.
 - amount는 0~1,000,000,000, targetAmount는 1~1,000,000,000 범위다. 입력·합산·복원에서 범위와 유형을 검증한다.
 - 수량 파싱은 기기 소수점 형식을 따르고 정확한 정수 변환을 사용한다. 소수 3자리 이상·NaN·무한대·음수·범위 초과는 거부한다.
@@ -113,8 +120,8 @@ HabitLog.date와 HabitGoal.habitId를 인덱싱한다. 습관 영구 삭제는 �
 - 새 날짜는 expectedRevision 0으로 생성한다. 기존 행의 revision은 1 이상이다. 중복·오래된 요청은 덮어쓰지 않고 최신 값으로 화면을 갱신한다.
 - ＋1은 화면의 최신 총량에 수량 단위 1(저장값 100)을 더한 절대값 요청이다. UI 요청을 순서대로 처리해 빠른 조작과 재시도를 구분한다.
 - CHECK 취소와 수량·시간 초기화는 총량 0을 저장한다. 행과 revision은 남겨 이전 요청이 취소 후 기록을 되살리지 않게 한다.
-- 시간형은 수동 분 입력만 제공한다. 종료 시각·실행 타이머·백그라운드 서비스는 M1에 추가하지 않는다.
-- 과거 수정은 startDate부터 오늘까지 허용하되 당시 요일 목표를 검증한다. 미래 기록과 비대상 날짜는 거부한다.
+- 시간 목표·수동 입력은 분 단위를 초로 변환한다. 타이머는 초를 보존하며 부분 기록을 분으로 조기 반올림하지 않는다.
+- 과거 수정은 기간 제한 없이 startDate부터 오늘까지 허용하되 당시 요일 목표를 검증한다. 미래 기록과 비대상 날짜는 거부한다.
 - 주 N일 목표를 초과한 날짜도 기록할 수 있다. 해당 날짜 목표량을 채운 날만 달성 일수로 세며 달성률은 100%를 넘지 않는다.
 - DAILY/WEEKDAYS 연속 달성은 연속된 대상 날짜만 센다. 비대상 날짜는 건너뛰고 아직 끝나지 않은 오늘은 미달성으로 끊지 않는다.
 - WEEKLY_COUNT 연속 달성은 주 단위다. 목표를 채운 현재 주는 포함하되 진행 중인 미달성 주는 연속 기록을 끊지 않는다.
@@ -124,12 +131,27 @@ HabitLog.date와 HabitGoal.habitId를 인덱싱한다. 습관 영구 삭제는 �
 - 선택 기간 경계의 일부 주는 주간 달성률에서 제외한다. 시작일로 잘린 첫 주는 위 보정 목표를 사용한다. 분모가 0이면 ‘집계할 기록 없음’이다.
 - 목표 mode가 바뀐 전후 구간의 일 단위·주 단위 연속 달성은 별도 표시한다. 단위가 다른 기록을 하나의 숫자로 합치지 않는다.
 - 과거 체크인 수정 시 통계를 원본 목표·로그에서 재계산한다. M1은 별도 통계 캐시를 저장하지 않는다.
-- 보관된 습관은 기록 조회·백업만 가능하다. M1은 보관 해제를 제공하지 않으며 이후 체크인·알림·통계 대상 날짜 생성을 중단한다.
+- 보관된 습관도 보관 날짜까지의 대상 기록은 조회·수정·백업 가능하다. M1은 보관 해제를 제공하지 않으며 이후 날짜의 기록·알림·통계 대상 생성을 중단한다.
 
 예: 월·수·금 독서는 월·수 완료 시 2회 연속이다. 화요일은 끊김이 아니다.
 주 3일 운동은 같은 날 중복 체크인해도 1일이며 월·수·금 체크인 시 3/3일이다.
 물 8잔 목표에 3잔 기록은 amount=300, targetAmount=800이다. 8잔에 달성하며 9잔은 실제 기록 900을 유지한다.
 독서 30분 목표에 20분은 부분 기록이고 30분부터 그날 달성으로 집계한다.
+
+### 습관 타이머
+
+- 앱 전체에서 세션 하나만 둔다. 시작 날짜는 습관 시간대 기준이며 자정 후에도 그 날짜에 기록한다.
+- 경과 측정은 SystemClock.elapsedRealtime()의 차이로 계산한다. 벽시계 변경이나 화면 꺼짐으로 시간이 줄지 않게 한다.
+- 시작·일시정지·재개와 화면을 떠날 때 상태를 저장한다. 화면이 열려 있으면 30초마다 checkpointMs를 갱신한다.
+- 같은 부팅이면 저장된 segmentStartedElapsedMs로 복구한다. 실제로 초마다 백그라운드 프로세스를 실행할 필요는 없다.
+- bootMarker는 부팅 식별 값이다. 재부팅 또는 동일 부팅 여부를 확인할 수 없는 환경에서는 checkpointMs로 일시정지하고 손실 가능 구간을 표시한다.
+- 부팅 식별 값을 얻는 API와 기기별 가용성은 구현 시 확인한다. elapsedRealtime 값의 단순 대소 비교만으로 부팅이 같다고 판단하지 않는다.
+- 저장은 최신 HabitLog.amount에 floor(총 경과 milliseconds/1,000)를 더하고 revision 증가·세션 SAVED 전환을 한 트랜잭션으로 처리한다.
+- 이미 SAVED이거나 sessionId가 달라진 저장 요청은 무시한다. 1초 미만·범위 초과는 저장하지 않고 사용자에게 안내한다.
+- 수동 총량 수정과 세션 저장은 직렬화한다. 둘을 함께 사용하면 측정 시간이 현재 총량에 더해진다는 미리보기를 표시한다.
+- 버리기는 확인 후 세션을 제거하며 일별 기록은 바꾸지 않는다. 습관 보관·삭제·교체 복원 전 미저장 세션을 처리한다.
+- 내보내기에서는 미저장 세션을 현재 측정량의 PAUSED 스냅샷으로 담는다. 복원 시 자동 재개하지 않고 저장/버리기를 안내한다.
+- M1은 경과 스톱워치만 제공한다. 백그라운드 목표 도달 소리·포모도로·휴식 주기는 별도 기능이다.
 
 ## 4. 날짜·반복 규칙
 
@@ -160,11 +182,20 @@ HabitLog.date와 HabitGoal.habitId를 인덱싱한다. 습관 영구 삭제는 �
 DB가 원본이다. 작업을 저장한 뒤 알림을 예약·취소한다. OS 예약 실패로 작업 저장을 취소하지 않는다.
 앱 시작·기기 재부팅·시간 및 시간대 변경·정확한 알람 권한 부여 후 DB에서 예약을 복구한다.
 반복 작업은 현재 활성 회차의 알림만 예약한다. 완료·삭제·날짜 변경 시 기존 예약과 게시 알림을 취소한다.
-습관은 저장된 시간대의 다음 대상 날짜 알림을 예약한다. 발송 후 다음 대상 날짜를 예약하며 주 목표·보관 여부를 다시 검사한다.
+습관은 각 HabitReminder별로 저장된 시간대의 다음 유효 시각을 예약한다. 발송 후 다음 시각을 예약하며 날짜·주 목표·보관 여부를 다시 검사한다.
 기록량 수정·목표 변경·보관 시 알림을 재계산한다. 부분 기록은 유지하고 날짜 목표 또는 주 목표를 달성하면 남은 알림을 취소한다.
 완료형 알림은 날짜를 명시한 체크인을 제공한다. 수량·시간형은 해당 날짜 입력 화면을 연다. 부분 기록을 임의로 목표 달성 처리하지 않는다.
 지난 날짜 액션은 당시 날짜를 검증하며 오늘 기록으로 바꾸지 않는다.
 발송 상태는 HabitReminderDelivery에 저장하고 재부팅·권한 변경 후 재예약 시 중복 발송을 차단한다.
+각 예약은 reminderId/date/triggerAt으로 식별한다. 알림 시각을 수정·삭제하면 기존 PendingIntent와 게시 알림을 취소한다.
+
+하루 요약은 기기 시간대의 선택 시각에 예약하며 발송 시점 DB에서 내용을 읽는다.
+오늘 대상·달성 수·미달성 부분량·주간 진행을 포함하고 각 습관의 날짜는 그 습관 시간대로 판단한다.
+대상 없음은 발송 생략, 모두 달성은 달성 요약으로 발송한다. 발송 날짜·예약 시각을 검사해 하루 한 번만 보낸다.
+개별 알림과 요약이 같은 분에 예정되면 한 예약 묶음으로 요약을 발송한다. 늦게 수신된 개별 예약도 같은 묶음 상태를 검사해 중복 소리를 막는다.
+요약이 앱 또는 채널 설정에서 꺼져 있으면 개별 알림을 묶거나 소모하지 않는다. 묶음 발송과 날짜별 상태 갱신은 하나의 처리 경로에서 실행한다.
+예약 재검사는 요약과 개별 알림을 모두 포함한다. 요약 변경·권한 거부·발송 생략 시에도 다음 날짜를 계산한다.
+습관 알림·하루 요약·작업 알림은 별도 NotificationChannel로 제공한다. 잠금 화면은 내용 숨김 기본값을 유지한다.
 
 - Android 13 이상에서 알림 권한은 첫 알림 설정 시 맥락과 함께 요청한다.
 - 정확한 알람은 지원 API에서 권한 상태를 확인한다. 필요 시 설정 화면을 안내하며 무조건 권한을 요구하지 않는다.
@@ -180,20 +211,21 @@ DB가 원본이다. 작업을 저장한 뒤 알림을 예약·취소한다. OS �
 
 ## 6. 백업·복원과 데이터 보호
 
-백업은 `schemaVersion`, `exportedAt`, 습관·목표 이력·날짜별 체크인·습관 알림 설정, 목록·작업·체크리스트·태그·일정·회차·알림·설정의 JSON이다.
+백업은 `schemaVersion`, `exportedAt`, 습관·목표 이력·날짜별 기록량·여러 알림·미저장 타이머 스냅샷·요약 설정, 목록·작업·체크리스트·태그·일정·회차·알림·설정의 JSON이다.
 발송 캐시는 내보내지 않는다. 복원 후 알림을 다시 계산하고 지난 알림은 발송하지 않는다.
 
 1. 내보내기는 일관된 DB 스냅샷을 읽는다. 파일 저장 실패는 기존 DB에 영향을 주지 않는다.
 2. 복원은 선택 파일을 임시로 파싱한다. 최대 20MiB, 항목 합계 최대 100,000개로 제한한다.
 3. 지원 버전, 필수 필드, 길이·열거값·날짜·시간대, 중복 ID, FK, 받은함 존재를 검증한다.
    습관별 시작 목표, 목표 mode·measureType별 필드, 단위·정수량·revision, 날짜별 기록 중복·유효 범위도 검증한다.
+   알림 시각 중복·개수와 PAUSED 세션의 연결 습관·날짜·경과량도 검증한다.
 4. 현재 항목 수와 복원 항목 수를 보여주고 **현재 데이터 전체 교체**를 명시해 확인받는다.
 5. 교체 전 현재 데이터의 복구 스냅샷을 앱 내부 파일에 저장한다. 저장 실패하면 복원을 중단한다.
 6. 한 DB 트랜잭션으로 교체하고 검증 실패 시 rollback한다. 성공 후 OS 알림을 전체 재계산한다.
 7. UI·알림 액션과 복원이 동시에 데이터를 변경하지 않도록 저장소에서 직렬화한다.
 
 알 수 없는 상위 schemaVersion은 거부한다. M1은 병합 복원을 제공하지 않는다.
-백업 파일은 평문이며 사용자가 선택한 저장 위치로 나갈 수 있음을 내보내기 화면에 표시한다.
+사용자 선택에 따라 백업 파일은 암호화하지 않는다. 사용자가 선택한 저장 위치에 개인 기록이 평문으로 저장됨을 내보내기 화면에 표시한다.
 앱 DB는 내부 저장소에 둔다. M1은 시스템 자동 백업·기기 전송에서 DB를 제외하고 명시적 파일 백업을 제공한다.
 복원 스냅샷은 앱 내부에 최근 한 개만 유지한다. 앱 삭제 시 내부 데이터와 스냅샷은 함께 삭제된다.
 DB 업그레이드는 명시적 Room migration으로 처리하고 destructive migration은 사용하지 않는다.
@@ -201,7 +233,8 @@ DB 업그레이드는 명시적 Room migration으로 처리하고 destructive mi
 
 ## 7. 후속 확장 경계
 
-Habit/HabitGoal/HabitLog는 M1 필수다. M2에서 FocusSession을 별도 테이블로 추가한다.
+Habit/HabitGoal/HabitLog와 습관 스톱워치는 M1 필수다. M2 집중 기능이 습관 측정과 겹치면 기존 경과시간 계산·중복 저장 처리를 재사용한다.
+포모도로·휴식·집중 통계가 확정되면 FocusSession 추가를 검토한다.
 집중 타이머는 종료 시각과 실행 상태를 저장해 앱 재시작 시 복구하며 백그라운드 정책을 별도 검토한다.
 위젯은 Room 데이터를 읽고 기존 완료·추가 로직을 호출한다.
 
@@ -214,6 +247,7 @@ updatedAt만으로 충돌을 해결한다고 가정하지 않는다. 오프라�
 - [Room 공식 문서](https://developer.android.com/training/data-storage/room): SQLite 관계 데이터, 쿼리 검증과 migration 지원.
 - [알람 공식 문서](https://developer.android.com/develop/background-work/services/alarms): 정확한 알람 권한·재예약 규칙.
 - [알림 권한 공식 문서](https://developer.android.com/develop/ui/views/notifications/notification-permission): Android 13 이상 런타임 권한.
+- [SystemClock 공식 문서](https://developer.android.com/reference/android/os/SystemClock): elapsedRealtime은 부팅 후 경과시간이며 기기 sleep 시간도 포함한다. 타이머 재부팅 복구 정책은 이 프로젝트의 설계 제안이다.
 - [WorkManager 공식 문서](https://developer.android.com/develop/background-work/background-tasks/persistent-work/getting-started): 지속적인 백그라운드 작업.
 
 구체적인 데이터 구조·기본값·기능 단계는 이 프로젝트의 설계 결정이다.
