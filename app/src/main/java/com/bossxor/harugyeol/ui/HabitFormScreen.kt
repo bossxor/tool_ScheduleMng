@@ -1,5 +1,6 @@
 package com.bossxor.harugyeol.ui
 
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,17 +40,24 @@ import com.bossxor.harugyeol.habit.parseMinutes
 import com.bossxor.harugyeol.habit.parseQuantity
 import com.bossxor.harugyeol.habit.pendingGoal
 import java.time.LocalDate
+import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 class NewHabit(
     val name: String, val colorIndex: Int, val type: MeasureType, val unit: String?,
     val mode: GoalMode, val weekdays: List<Int>?, val targetDays: Int?, val targetAmount: Long,
     val reminders: List<String>,
+    val startDate: LocalDate, val note: String, val iconKey: String?,
 )
 
 private val presets = listOf(
     Triple("물 마시기", MeasureType.QUANTITY, "잔" to "8"),
     Triple("독서", MeasureType.DURATION, "" to "30"),
     Triple("스트레칭", MeasureType.CHECK, "" to ""),
+    Triple("일기 쓰기", MeasureType.CHECK, "" to ""),
+    Triple("일찍 자기", MeasureType.CHECK, "" to ""),
+    Triple("운동 주 3일", MeasureType.CHECK, "" to ""),
 )
 
 /** 습관 추가(initial == null)와 편집을 같은 화면으로 쓴다. 편집에서는 유형·단위를 바꿀 수 없다. */
@@ -56,15 +65,20 @@ private val presets = listOf(
 fun HabitFormScreen(
     initial: Habit?,
     today: LocalDate,
-    onSave: (NewHabit) -> String?,
+    onSave: suspend (NewHabit) -> String?,
     onCancelPending: () -> Unit,
     onClose: () -> Unit,
 ) {
     val c = LocalHaru.current
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
     val editing = initial != null
     val g = initial?.goalFor(today)
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
+    var startDate by remember { mutableStateOf(initial?.startDate ?: today) }
+    var note by remember { mutableStateOf(initial?.note.orEmpty()) }
+    var iconKey by remember { mutableStateOf(initial?.iconKey) }
     var color by remember { mutableIntStateOf(initial?.colorIndex ?: 1) }
     var type by remember { mutableStateOf(initial?.measureType ?: MeasureType.CHECK) }
     var unit by remember { mutableStateOf(initial?.unit ?: "잔") }
@@ -90,24 +104,36 @@ fun HabitFormScreen(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp).heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(48.dp).clickable(onClickLabel = "닫기", onClick = onClose), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(48.dp).clickable(enabled = !saving, onClickLabel = "닫기", onClick = onClose), contentAlignment = Alignment.Center) {
                 Text("✕", style = HaruType.headline, color = c.text)
             }
             Text(if (editing) "습관 편집" else "습관 추가", style = HaruType.title, color = c.text, modifier = Modifier.weight(1f))
-            PillButton("저장", HabitPalettes[1].fill, Color.White) {
-                val amount: Long? = when (type) {
-                    MeasureType.CHECK -> 1L
-                    MeasureType.QUANTITY -> parseQuantity(target)
-                    MeasureType.DURATION -> parseMinutes(target)
+            PillButton(if (saving) "저장 중…" else "저장", HabitPalettes[1].fill, Color.White) {
+                if (!saving) {
+                    val amount: Long? = when (type) {
+                        MeasureType.CHECK -> 1L
+                        MeasureType.QUANTITY -> parseQuantity(target)
+                        MeasureType.DURATION -> parseMinutes(target)
+                    }
+                    if (amount == null || amount <= 0) {
+                        error = "목표량을 입력해 주세요"
+                    } else {
+                        val draft = NewHabit(
+                            name, color, type, if (type == MeasureType.QUANTITY) unit else null,
+                            mode, if (mode == GoalMode.WEEKDAYS) weekdays.toList() else null,
+                            if (mode == GoalMode.WEEKLY_COUNT) targetDays else null, amount, reminders,
+                            startDate, note, iconKey,
+                        )
+                        saving = true
+                        error = null
+                        scope.launch {
+                            try { error = onSave(draft) }
+                            catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { error = e.message ?: "저장하지 못했어요. 다시 시도해 주세요" }
+                            finally { saving = false }
+                        }
+                    }
                 }
-                error = if (amount == null || amount <= 0) "목표량을 입력해 주세요"
-                else onSave(
-                    NewHabit(
-                        name, color, type, if (type == MeasureType.QUANTITY) unit else null,
-                        mode, if (mode == GoalMode.WEEKDAYS) weekdays.toList() else null,
-                        if (mode == GoalMode.WEEKLY_COUNT) targetDays else null, amount, reminders,
-                    )
-                )
             }
         }
         Column(
@@ -115,20 +141,47 @@ fun HabitFormScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                Sticker(name.ifBlank { "습" }, p, DayState.ACHIEVED, 1f, 72.dp)
+                if (iconKey == null) Sticker(name.ifBlank { "습" }, p, DayState.ACHIEVED, 1f, 72.dp)
+                else HabitArtIcon(iconKey, Modifier.size(72.dp))
             }
             if (!editing) {
                 Label("추천 습관")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     presets.forEach { (n, t, ut) ->
                         Chip(n, selected = false) {
                             name = n; type = t; unit = ut.first.ifEmpty { unit }; target = ut.second
+                            mode = if (n == "운동 주 3일") GoalMode.WEEKLY_COUNT else GoalMode.DAILY
+                            targetDays = 3
                         }
                     }
                 }
             }
             Label("이름")
             HaruTextField(name, { name = it }, "예: 물 마시기", Modifier.fillMaxWidth())
+            Label("시작일")
+            if (editing) {
+                Text("$startDate · 시작일은 바꿀 수 없어요", style = HaruType.bodyS, color = c.textSub)
+            } else {
+                PillButton(startDate.toString(), c.surface, c.text) {
+                    DatePickerDialog(ctx, { _, year, month, day ->
+                        startDate = LocalDate.of(year, month + 1, day)
+                    }, startDate.year, startDate.monthValue - 1, startDate.dayOfMonth).apply {
+                        datePicker.maxDate = today.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    }.show()
+                }
+                Text("오늘 또는 지난 날짜부터 시작할 수 있어요", style = HaruType.bodyS, color = c.textSub)
+            }
+            Label("메모")
+            HaruTextField(note, { note = it }, "습관을 위한 메모 (선택)", Modifier.fillMaxWidth(), multiline = true)
+            Label("그림")
+            Chip("기본 글자", iconKey == null) { iconKey = null }
+            HabitArt.options.chunked(3).forEach { group ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    group.forEach { (key, label) ->
+                        Chip(label, iconKey == key) { iconKey = key }
+                    }
+                }
+            }
             Label("색")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 HabitPalettes.forEachIndexed { i, hp ->

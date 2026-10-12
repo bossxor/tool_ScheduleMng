@@ -67,7 +67,8 @@ class HabitActions(
 fun HabitsScreen(
     data: AppData, today: LocalDate, actions: HabitActions,
     onAdd: () -> Unit, onOpen: (String) -> Unit, onTimer: (String) -> Unit,
-    onArchive: () -> Unit, banner: String = "",
+    onArchive: () -> Unit,
+    onStickers: () -> Unit, banner: String = "",
 ) {
     val c = LocalHaru.current
     val habits = data.habits.filter { it.archivedAt == null }.sortedBy { it.sortOrder }
@@ -121,7 +122,7 @@ fun HabitsScreen(
                     ReorderRow(h, first = h.id == habits.first().id, last = h.id == habits.last().id, actions)
                 }
             } else {
-                item { SummaryCard(habits, states, today) }
+                item { SummaryCard(habits, states, today, onStickers) }
                 if (habits.isEmpty()) {
                     item {
                         Column(
@@ -191,7 +192,7 @@ private fun ReorderRow(h: Habit, first: Boolean, last: Boolean, actions: HabitAc
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Sticker(h.name, palette(h.colorIndex), DayState.REST, 0f, 44.dp)
+            Sticker(h.name, palette(h.colorIndex), DayState.REST, 0f, 44.dp, h.iconKey)
             Text(h.name, style = HaruType.headline, color = c.text, maxLines = 1, modifier = Modifier.weight(1f))
             ArrowButton("▲", "${h.name} 위로", enabled = !first) { actions.move(h.id, true) }
             ArrowButton("▼", "${h.name} 아래로", enabled = !last) { actions.move(h.id, false) }
@@ -220,7 +221,7 @@ private fun SectionTitle(title: String) {
 }
 
 @Composable
-private fun SummaryCard(habits: List<Habit>, states: Map<String, DayState>, today: LocalDate) {
+private fun SummaryCard(habits: List<Habit>, states: Map<String, DayState>, today: LocalDate, onStickers: () -> Unit) {
     val c = LocalHaru.current
     val counted = habits.filter { states.getValue(it.id).counts }
     val done = counted.count { states.getValue(it.id).isDone }
@@ -234,6 +235,7 @@ private fun SummaryCard(habits: List<Habit>, states: Map<String, DayState>, toda
                 )
             }
             WeekStrip(habits, today)
+            PillButton("스티커 모음", c.surface, c.text, onClick = onStickers)
         }
     }
 }
@@ -267,6 +269,9 @@ private fun WeekStrip(habits: List<Habit>, today: LocalDate) {
                         },
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (someDone && !allDone && !future) androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                        drawArc(HabitPalettes[3].fill, -90f, 360f * sts.count { it.isDone }.toFloat() / sts.size, false, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+                    }
                     Text(
                         d.dayOfMonth.toString(), style = HaruType.number,
                         color = if (allDone) Color.White else if (future) c.textSub else c.text,
@@ -304,7 +309,7 @@ private fun HabitCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Sticker(h.name, p, state, progress)
+            Sticker(h.name, p, state, progress, iconKey = h.iconKey)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(h.name, style = HaruType.headline, color = c.text, maxLines = 2)
                 if (state != DayState.REST && state != DayState.SKIPPED) {

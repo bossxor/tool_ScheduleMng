@@ -23,6 +23,9 @@ data class Task(
     val recurrence: RepeatRule? = null,
     val reminders: List<TaskReminder> = emptyList(),
     val occurrences: List<TaskOccurrence> = emptyList(),
+    val listId: String = INBOX_ID,
+    val tagIds: List<String> = emptyList(),
+    val checklist: List<ChecklistItem> = emptyList(),
 )
 
 private fun fail(msg: String): Nothing = throw HabitInputException(msg)
@@ -66,6 +69,7 @@ fun AppData.setTaskDone(
                 dueDate = next ?: date, completedAt = if (next == null) now else null, updatedAt = now,
                 occurrences = task.occurrences + TaskOccurrence(date, task.dueTime, now),
                 reminders = task.reminders.map { it.copy(snoozedUntil = null) },
+                checklist = if (next != null) task.checklist.map { it.copy(isDone = false) } else task.checklist,
             )
         }
     }
@@ -147,13 +151,18 @@ fun AppData.searchTasks(query: String, includeCompleted: Boolean = false): List<
 data class TaskDraft(
     val title: String, val note: String, val priority: Int, val dueDate: LocalDate?,
     val dueTime: String? = null, val recurrence: RepeatRule? = null, val reminders: List<TaskReminder> = emptyList(),
+    val listId: String = INBOX_ID, val tagIds: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(),
 )
 
 fun AppData.saveTask(id: String?, draft: TaskDraft, now: Long): AppData {
+    validateTaskRelations(draft.listId, draft.tagIds, draft.checklist)
     validateTaskSchedule(draft.dueDate, draft.dueTime, draft.recurrence, draft.reminders)
     val next = if (id == null) addTask(draft.title, draft.note, draft.priority, draft.dueDate, now)
         else editTask(id, draft.title, draft.note, draft.priority, draft.dueDate, now)
     val taskId = id ?: next.tasks.last().id
-    if (draft.recurrence != null && next.tasks.first { it.id == taskId }.occurrences.any { it.scheduledDate == draft.dueDate }) fail("완료 기록이 있는 날짜를 현재 회차로 쓸 수 없어요")
-    return next.saveTaskSchedule(taskId, draft.dueTime, draft.recurrence, draft.reminders, now)
+    if (draft.recurrence != null && next.tasks.first { it.id == taskId }.completedAt == null && next.tasks.first { it.id == taskId }.occurrences.any { it.scheduledDate == draft.dueDate }) fail("완료 기록이 있는 날짜를 현재 회차로 쓸 수 없어요")
+    val scheduled = next.saveTaskSchedule(taskId, draft.dueTime, draft.recurrence, draft.reminders, now)
+    return scheduled.copy(tasks = scheduled.tasks.map {
+        if (it.id == taskId) it.copy(listId = draft.listId, tagIds = draft.tagIds, checklist = draft.checklist.map { item -> item.copy(text = item.text.trim()) }) else it
+    })
 }

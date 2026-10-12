@@ -118,7 +118,7 @@ class TaskBackupUpdateTest {
 
     @Test fun `사전 릴리스와 여러 APK는 선택하지 않는다`() {
         fun release(extra: String, assets: String) = Json.parseToJsonElement("""{"tag_name":"v1.0.0",$extra"assets":[$assets]}""").jsonObject
-        val asset = """{"name":"Harugyeol.apk","browser_download_url":"https://github.com/example.apk","size":10}"""
+        val asset = """{"name":"Harugyeol.apk","browser_download_url":"https://github.com/bossxor/tool_ScheduleMng/releases/download/v1.0.0/Harugyeol.apk","size":10}"""
         assertNotNull(Updater.parseRelease(release("", asset)))
         assertNull(Updater.parseRelease(release("\"prerelease\":true,", asset)))
         assertNull(Updater.parseRelease(release("", "$asset,$asset")))

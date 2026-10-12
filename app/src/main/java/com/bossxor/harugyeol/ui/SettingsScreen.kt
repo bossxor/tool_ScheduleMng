@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +27,9 @@ import java.util.Date
 import java.util.Locale
 
 class SettingsActions(
+    val setTheme: (String) -> Unit,
+    val setHaptics: (Boolean) -> Unit,
+    val about: () -> Unit,
     val addWidget: () -> Unit,
     val setAllDayTime: (String) -> Unit,
     val setSummary: (enabled: Boolean, time: String) -> Unit,
@@ -45,6 +49,9 @@ fun SettingsScreen(
     val c = LocalHaru.current
     val ctx = LocalContext.current
     val summary = data.settings.dailySummary
+    val now = java.time.LocalDateTime.now()
+    val pastCount = com.bossxor.harugyeol.reminders.taskAlarmPlans(data, System.currentTimeMillis(), futureOnly = false).count { it.at < System.currentTimeMillis() }
+    val habitPast = data.habits.count { com.bossxor.harugyeol.reminders.shouldNotifyHabit(it, now.toLocalDate()) && it.reminders.any { t -> java.time.LocalTime.parse(t).isBefore(now.toLocalTime()) } }
     val ignoring = ctx.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName)
 
     Column(
@@ -53,9 +60,21 @@ fun SettingsScreen(
     ) {
         Text("설정", style = HaruType.title, color = c.text)
 
+        SettingCard("화면·달성 효과") {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("SYSTEM" to "시스템", "LIGHT" to "밝게", "DARK" to "어둡게").forEach { (theme, label) ->
+                    PillButton(label, if (data.settings.theme == theme) HabitPalettes[1].fill else c.surface, if (data.settings.theme == theme) Color.White else c.text) { actions.setTheme(theme) }
+                }
+            }
+            PillButton(if (data.settings.celebrationHaptics) "달성 진동 켜짐" else "달성 진동 꺼짐", c.surface, c.text) { actions.setHaptics(!data.settings.celebrationHaptics) }
+        }
+
         SettingCard("알림") {
+            if (pastCount + habitPast > 0) Text("알림 시각이 지난 미완료 항목이 있어요. 발송 여부는 확인할 수 없으니 오늘 화면에서 기록을 확인해 주세요.", style = HaruType.bodyS, color = c.textSub)
+            val exact = ctx.getSystemService(android.app.AlarmManager::class.java).canScheduleExactAlarms()
+            if (!exact) Text("정확한 알람이 제한돼 있어 알림이 지연될 수 있어요. Android 알람 권한을 확인해 주세요.", style = HaruType.bodyS, color = c.errorText)
             Text(if (notificationsAllowed) "알림이 허용돼 있어요" else "알림이 꺼져 있어요. 허용해야 알림을 받을 수 있어요.", style = HaruType.body, color = c.text)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!notificationsAllowed) PillButton("권한 요청", HabitPalettes[1].fill, Color.White, onClick = actions.requestNotifications)
                 PillButton("테스트 알림 보내기", c.surface, c.text, onClick = actions.testNotification)
             }
@@ -74,7 +93,7 @@ fun SettingsScreen(
                 else "지금은 꺼져 있어요. 켜면 정한 시각에 한 번 알려 드려요.",
                 style = HaruType.body, color = c.text,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PillButton(
                     if (summary.enabled) "끄기" else "켜기",
                     if (summary.enabled) c.surface else HabitPalettes[3].fill,
@@ -101,7 +120,7 @@ fun SettingsScreen(
 
         SettingCard("데이터") {
             Text("백업 파일은 암호화되지 않아요. 개인 기록이 그대로 들어 있으니 보관 위치에 주의해 주세요.", style = HaruType.bodyS, color = c.textSub)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PillButton("백업 저장", HabitPalettes[1].fill, Color.White, onClick = actions.backup)
                 PillButton("백업에서 복원", c.surface, c.text, onClick = actions.restore)
             }
@@ -129,9 +148,10 @@ fun SettingsScreen(
             }
         }
 
-        SettingCard("오픈소스 라이선스") {
+        SettingCard("앱 정보·라이선스") {
+            PillButton("앱 정보·허가문 보기", c.surface, c.text, onClick = actions.about)
             Text(
-                "글자체: 주아(Jua, SIL OFL 1.1), Pretendard(SIL OFL 1.1). 자세한 내용은 저장소의 assets/fonts 폴더에 있어요.",
+                "글자체와 그림의 출처·허가문을 앱 안에서 확인할 수 있어요.",
                 style = HaruType.bodyS, color = c.textSub,
             )
         }

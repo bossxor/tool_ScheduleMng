@@ -67,6 +67,7 @@ fun HabitDetailScreen(
     var editing by remember { mutableStateOf<LocalDate?>(null) }
     var confirmArchive by remember { mutableStateOf(false) }
     val pending = habit.pendingGoal(today)
+    val readOnly = habit.archivedAt != null
 
     val streak = habit.streak(today)
     val rate = if (showMonthRate) habit.monthRate(month, today) else habit.totalRate(today)
@@ -74,11 +75,13 @@ fun HabitDetailScreen(
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
         TopBar(habit.name, onBack) {
+            if (!readOnly) {
             Box(Modifier.heightIn(min = 48.dp).clickable(onClick = onEdit).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
                 Text("편집", style = HaruType.body, color = c.textSub)
             }
             Box(Modifier.heightIn(min = 48.dp).clickable { confirmArchive = true }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
                 Text("보관", style = HaruType.body, color = c.textSub)
+            }
             }
         }
         Column(
@@ -86,12 +89,27 @@ fun HabitDetailScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Sticker(habit.name, p, DayState.ACHIEVED, 1f, 72.dp)
+                if (habit.iconKey == null) Sticker(habit.name, p, DayState.ACHIEVED, 1f, 72.dp)
+                else HabitArtIcon(habit.iconKey, Modifier.size(72.dp))
                 Column {
                     Text(habit.goalLabel(), style = HaruType.headline, color = c.text)
                     Text("${habit.startDate.monthValue}월 ${habit.startDate.dayOfMonth}일부터", style = HaruType.bodyS, color = c.textSub)
                 }
             }
+            if (readOnly) Text("보관한 습관 · 기록은 읽기 전용이에요", style = HaruType.bodyS, color = c.textSub)
+            if (habit.note.isNotBlank()) {
+                PopCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("메모", style = HaruType.headline, color = c.text)
+                        Text(habit.note, style = HaruType.body, color = c.text)
+                    }
+                }
+            }
+            Text(
+                if (habit.reminders.isEmpty()) "알림 없음" else "알림 · " + habit.reminders.joinToString(", ") +
+                    if (readOnly) " (보관 중에는 울리지 않아요)" else "",
+                style = HaruType.bodyS, color = c.textSub,
+            )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatCard("현재 연속", "${streak.current}$unit", Modifier.weight(1f))
                 StatCard("최장 연속", "${streak.longest}$unit", Modifier.weight(1f))
@@ -115,21 +133,21 @@ fun HabitDetailScreen(
                                 habit.amountText(pending.targetAmount, pending.targetAmount).substringAfter('/').ifEmpty { "완료" } + " 목표",
                             style = HaruType.body, color = c.text, modifier = Modifier.weight(1f),
                         )
-                        PillButton("예약 취소", c.surface, c.text, onClick = onCancelPending)
+                        if (!readOnly) PillButton("예약 취소", c.surface, c.text, onClick = onCancelPending)
                     }
                 }
             }
             PopCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MonthHeader(month, habit, today) { month = it }
-                    MonthGrid(habit, p, month, today) { editing = it }
+                    MonthGrid(habit, p, month, today, readOnly) { if (!readOnly) editing = it }
                 }
             }
-            Text("날짜를 누르면 기록을 고치거나 건너뛸 수 있어요", style = HaruType.bodyS, color = c.textSub)
+            if (!readOnly) Text("날짜를 누르면 기록을 고치거나 건너뛸 수 있어요", style = HaruType.bodyS, color = c.textSub)
         }
     }
 
-    if (confirmArchive) {
+    if (confirmArchive && !readOnly) {
         Dialog(onDismissRequest = { confirmArchive = false }) {
             PopCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -147,7 +165,7 @@ fun HabitDetailScreen(
         }
     }
 
-    editing?.let { date ->
+    editing?.takeIf { !readOnly }?.let { date ->
         DayEditDialog(habit, date, onDismiss = { editing = null }, actions = actions)
     }
 }
@@ -185,7 +203,7 @@ private fun MonthHeader(month: YearMonth, habit: Habit, today: LocalDate, onChan
 }
 
 @Composable
-private fun MonthGrid(habit: Habit, p: HabitPalette, month: YearMonth, today: LocalDate, onPick: (LocalDate) -> Unit) {
+private fun MonthGrid(habit: Habit, p: HabitPalette, month: YearMonth, today: LocalDate, readOnly: Boolean, onPick: (LocalDate) -> Unit) {
     val c = LocalHaru.current
     Row(Modifier.fillMaxWidth()) {
         "월화수목금토일".forEach {
@@ -204,7 +222,7 @@ private fun MonthGrid(habit: Habit, p: HabitPalette, month: YearMonth, today: Lo
                     Spacer(Modifier.weight(1f).height(60.dp))
                 } else {
                     val date = month.atDay(idx + 1)
-                    val tappable = !date.isAfter(today) && !date.isBefore(habit.startDate)
+                    val tappable = !readOnly && !date.isAfter(today) && !date.isBefore(habit.startDate)
                     DayCell(habit, p, date, today, tappable, Modifier.weight(1f)) { onPick(date) }
                 }
             }
@@ -232,7 +250,7 @@ private fun DayCell(habit: Habit, p: HabitPalette, date: LocalDate, today: Local
             color = if (date == today) c.text else c.textSub,
         )
         if (inRange && state != DayState.REST) {
-            Sticker(if (state == DayState.SKIPPED) "" else habit.name, p, state, progress, 34.dp)
+            Sticker(if (state == DayState.SKIPPED) "" else habit.name, p, state, progress, 34.dp, habit.iconKey)
         } else {
             Box(Modifier.size(34.dp))
         }

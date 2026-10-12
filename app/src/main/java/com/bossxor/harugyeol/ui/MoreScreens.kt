@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,6 +97,13 @@ fun TimerScreen(habit: Habit, data: AppData, today: LocalDate, boot: Int, action
     val t = data.timer?.takeIf { it.habitId == habit.id }
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     var confirmSave by remember { mutableStateOf(false) }
+
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val previousKeepScreenOn = view.keepScreenOn
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = previousKeepScreenOn }
+    }
 
     // 화면이 열려 있는 동안 1초마다 표시를 갱신하고 30초마다 보존한다
     LaunchedEffect(t?.sessionId, t?.state) {

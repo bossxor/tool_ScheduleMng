@@ -89,6 +89,12 @@ object HaruType {
 }
 
 @Composable
-fun HaruTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalHaru provides (if (dark) DarkHaru else LightHaru), content = content)
+fun HaruTheme(dark: Boolean = isSystemInDarkTheme(), theme: String = "SYSTEM", content: @Composable () -> Unit) {
+    val resolvedDark = when (theme) { "DARK" -> true; "LIGHT" -> false; else -> dark }
+    val colors = if (resolvedDark) DarkHaru else LightHaru
+    val scheme = if (resolvedDark) androidx.compose.material3.darkColorScheme(surface = colors.surface, background = colors.bg, onSurface = colors.text, onBackground = colors.text)
+        else androidx.compose.material3.lightColorScheme(surface = colors.surface, background = colors.bg, onSurface = colors.text, onBackground = colors.text)
+    androidx.compose.material3.MaterialTheme(colorScheme = scheme) {
+        CompositionLocalProvider(LocalHaru provides colors, content = content)
+    }
 }

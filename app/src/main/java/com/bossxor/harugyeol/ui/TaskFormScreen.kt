@@ -18,14 +18,18 @@ import com.bossxor.harugyeol.task.*
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 fun TaskFormScreen(
-    initial: Task?, defaultDate: LocalDate?, today: LocalDate,
-    onSave: (TaskDraft) -> String?, onTrash: () -> Unit, onClose: () -> Unit,
+    initial: Task?, defaultDate: LocalDate?, today: LocalDate, data: com.bossxor.harugyeol.AppData,
+    onSave: suspend (TaskDraft) -> String?, onTrash: () -> Unit, onClose: () -> Unit,
 ) {
     val c = LocalHaru.current
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf(initial?.title.orEmpty()) }
     var note by remember { mutableStateOf(initial?.note.orEmpty()) }
     var priority by remember { mutableIntStateOf(initial?.priority ?: 0) }
@@ -36,25 +40,48 @@ fun TaskFormScreen(
     var weekdays by remember { mutableStateOf(initial?.recurrence?.weekdays ?: listOf((due ?: today).dayOfWeek.value)) }
     var until by remember { mutableStateOf(initial?.recurrence?.untilDate) }
     var reminders by remember { mutableStateOf(initial?.reminders?.map { it.minutesBefore }.orEmpty()) }
+    var listId by remember { mutableStateOf(initial?.listId ?: INBOX_ID) }
+    var tagIds by remember { mutableStateOf(initial?.tagIds.orEmpty()) }
+    var checklist by remember { mutableStateOf(initial?.checklist.orEmpty()) }
+    var checklistText by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val units = listOf(null to "없음", RepeatUnit.DAY to "일", RepeatUnit.WEEK to "주", RepeatUnit.MONTH to "월", RepeatUnit.YEAR to "년")
     fun datePicker(value: LocalDate, set: (LocalDate) -> Unit) = DatePickerDialog(ctx, { _, y, m, d -> set(LocalDate.of(y, m + 1, d)) }, value.year, value.monthValue - 1, value.dayOfMonth).show()
     fun save() {
+        if (saving) return
         try {
             val anchor = if (due == initial?.dueDate) initial?.recurrence?.anchorDate ?: due else due
             val rule = unit?.let { RepeatRule(it, interval.toIntOrNull() ?: throw HabitInputException("반복 간격은 정수로 입력해 주세요"), anchor ?: throw HabitInputException("반복 시작 날짜를 골라 주세요"), if (it == RepeatUnit.WEEK) weekdays else null, until) }
             rule?.validate()
             val date = if (rule != null && due != null) rule.nextOnOrAfter(due!!) ?: throw HabitInputException("종료일 안에 반복 날짜가 없어요") else due
-            error = onSave(TaskDraft(title, note, priority, date, time, rule, reminders.map { TaskReminder(it) }))
+            val draft = TaskDraft(title, note, priority, date, time, rule, reminders.map { TaskReminder(it) }, listId, tagIds, checklist)
+            saving = true
+            error = null
+            scope.launch {
+                try { error = onSave(draft) }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { error = e.message ?: "저장하지 못했어요. 다시 시도해 주세요" }
+                finally { saving = false }
+            }
         } catch (e: HabitInputException) { error = e.message }
     }
     Column(Modifier.fillMaxSize().background(c.bg)) {
-        TopBar(if (initial == null) "할 일 추가" else "할 일 편집", onClose) {
-            PillButton("저장", HabitPalettes[1].fill, Color.White) { save() }
+        TopBar(if (initial == null) "할 일 추가" else "할 일 편집", { if (!saving) onClose() }) {
+            PillButton(if (saving) "저장 중…" else "저장", HabitPalettes[1].fill, Color.White) { save() }
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("제목", style = HaruType.headline, color = c.text)
             HaruTextField(title, { title = it }, "할 일 제목", Modifier.fillMaxWidth())
+            Text("목록", style = HaruType.headline, color = c.text)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                data.lists.forEach { list -> PillButton(list.name, if (listId == list.id) HabitPalettes[1].fill else c.surface, if (listId == list.id) Color.White else c.text) { listId = list.id } }
+            }
+            if (data.tags.isNotEmpty()) {
+                Text("태그", style = HaruType.headline, color = c.text)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    data.tags.forEach { tag -> PillButton(tag.name, if (tag.id in tagIds) HabitPalettes[2].fill else c.surface, if (tag.id in tagIds) Color.White else c.text) { tagIds = if (tag.id in tagIds) tagIds - tag.id else tagIds + tag.id } }
+                }
+            }
             Text("날짜", style = HaruType.headline, color = c.text)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PillButton("오늘", c.surface, c.text) { due = today }
@@ -106,10 +133,29 @@ fun TaskFormScreen(
                 listOf("없음", "낮음", "중간", "높음").forEachIndexed { i, label -> PillButton(label, if (priority == i) HabitPalettes[1].fill else c.surface, if (priority == i) Color.White else c.text) { priority = i } }
             }
             Text("메모", style = HaruType.headline, color = c.text)
-            HaruTextField(note, { note = it }, "메모", Modifier.fillMaxWidth())
+            HaruTextField(note, { note = it }, "메모", Modifier.fillMaxWidth(), multiline = true)
+            Text("체크리스트", style = HaruType.headline, color = c.text)
+            checklist.forEachIndexed { index, item ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(item.isDone, { done -> checklist = checklist.map { if (it.id == item.id) it.copy(isDone = done) else it } })
+                        HaruTextField(item.text, { text -> checklist = checklist.map { if (it.id == item.id) it.copy(text = text) else it } }, "항목", Modifier.weight(1f))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (index > 0) PillButton("위로", c.surface, c.text) { checklist = checklist.toMutableList().apply { java.util.Collections.swap(this, index, index - 1) } }
+                        if (index < checklist.lastIndex) PillButton("아래로", c.surface, c.text) { checklist = checklist.toMutableList().apply { java.util.Collections.swap(this, index, index + 1) } }
+                        PillButton("항목 삭제", c.errorBg, c.errorText) { checklist = checklist.filter { it.id != item.id } }
+                    }
+                }
+            }
+            HaruTextField(checklistText, { checklistText = it }, "새 체크리스트 항목", Modifier.fillMaxWidth())
+            PillButton("항목 추가", c.surface, c.text) {
+                if (checklistText.isNotBlank()) { checklist = checklist + ChecklistItem(java.util.UUID.randomUUID().toString(), checklistText.trim()); checklistText = "" }
+            }
+            Text("체크리스트를 모두 체크해도 작업은 자동 완료되지 않아요.", style = HaruType.bodyS, color = c.textSub)
             initial?.occurrences?.sortedByDescending { it.completedAt }?.take(10)?.forEach { Text("${it.scheduledDate} 회차 완료", style = HaruType.bodyS, color = c.textSub) }
             error?.let { Text(it, style = HaruType.body, color = c.errorText) }
-            if (initial != null) PillButton("휴지통으로 이동", c.errorBg, c.errorText, Modifier.fillMaxWidth(), onClick = onTrash)
+            if (initial != null) PillButton("휴지통으로 이동", c.errorBg, c.errorText, Modifier.fillMaxWidth(), onClick = { if (!saving) onTrash() })
         }
     }
 }

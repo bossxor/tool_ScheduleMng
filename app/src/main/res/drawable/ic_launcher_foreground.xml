@@ -7,7 +7,7 @@
         android:pathData="M54,54m-20,0a20,20 0,1 1,40 0a20,20 0,1 1,-40 0" />
     <path
         android:strokeColor="#2C2C2A" android:strokeWidth="4" android:strokeLineCap="round"
-        android:pathData="M54,26v-6 M54,82v6 M26,54h-6 M82,54h6 M34,34l-4,-4 M74,34l4,-4 M34,74l-4,4 M74,74l4,4" />
+        android:pathData="M54,27v-4 M54,81v4 M27,54h-4 M81,54h4 M35,35l-3,-3 M73,35l3,-3 M35,73l-3,3 M73,73l3,3" />
     <path
         android:strokeColor="#FFFFFF" android:strokeWidth="6"
         android:strokeLineCap="round" android:strokeLineJoin="round"

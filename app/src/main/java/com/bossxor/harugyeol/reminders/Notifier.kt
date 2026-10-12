@@ -61,10 +61,18 @@ object Notifier {
             val pi = PendingIntent.getBroadcast(
                 ctx, id(h.id),
                 Intent(ctx, ActionReceiver::class.java).setAction(ACTION_DONE)
+                    .setData(android.net.Uri.parse("haru://habit-done/${h.id}/$today"))
                     .putExtra(EXTRA_HABIT, h.id).putExtra(EXTRA_DATE, today.toString()),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             b.addAction(Notification.Action.Builder(Icon.createWithResource(ctx, R.drawable.ic_notification), "완료", pi).setAuthenticationRequired(true).build())
+        }
+        if (h.measureType != MeasureType.CHECK) {
+            val record = PendingIntent.getActivity(ctx, 0,
+                Intent(ctx, MainActivity::class.java).setData(android.net.Uri.parse("haru://habit-record/${h.id}/$today"))
+                    .putExtra(EXTRA_HABIT, h.id).putExtra(EXTRA_DATE, today.toString()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            b.addAction(Notification.Action.Builder(Icon.createWithResource(ctx, R.drawable.ic_notification), "기록하기", record).setAuthenticationRequired(true).build())
         }
         ctx.getSystemService(NotificationManager::class.java).notify(id(h.id), b.build())
     }

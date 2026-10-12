@@ -9,15 +9,20 @@ import java.io.File
 class HarugyeolApp : Application() {
     val store: AppStore by lazy { AppStore.open(File(filesDir, "data.json")) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    override fun onCreate() {
-        super.onCreate()
-        scope.launch {
+    private var observer: Job? = null
+    @Synchronized fun observeStore() {
+        if (observer?.isActive == true) return
+        observer = scope.launch {
             try {
                 store.state.collect { data ->
                     try { ReminderScheduler.rescheduleAll(this@HarugyeolApp, data) } catch (_: Exception) {}
                     try { TodayWidget.refresh(this@HarugyeolApp) } catch (_: Exception) {}
                 }
-            } catch (_: StoreException) { /* 손상 파일은 앱의 복구 화면에서 안내한다. */ }
+            } catch (_: StoreException) {}
         }
+    }
+    override fun onCreate() {
+        super.onCreate()
+        observeStore()
     }
 }

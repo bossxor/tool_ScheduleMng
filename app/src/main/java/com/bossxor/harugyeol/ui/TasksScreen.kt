@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
@@ -37,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bossxor.harugyeol.AppData
+import com.bossxor.harugyeol.task.inboxTasks
 import com.bossxor.harugyeol.task.searchTasks
 import com.bossxor.harugyeol.task.scheduledDates
 import com.bossxor.harugyeol.task.Task
@@ -91,6 +93,7 @@ private fun TaskRow(t: Task, today: LocalDate, onToggle: (Boolean) -> Unit, onOp
                 val sub = buildList {
                     t.dueDate?.let { add(dueLabel(it, today) + (t.dueTime?.let { time -> " $time" } ?: "")) }
                     if (t.recurrence != null) add("반복")
+                    if (t.checklist.isNotEmpty()) add("체크 ${t.checklist.count { it.isDone }}/${t.checklist.size}")
                     if (t.priority > 0) add("우선순위 ${priorityName[t.priority]}")
                 }
                 if (sub.isNotEmpty()) {
@@ -106,31 +109,41 @@ private fun TaskRow(t: Task, today: LocalDate, onToggle: (Boolean) -> Unit, onOp
 @Composable
 fun TasksScreen(
     data: AppData, today: LocalDate,
-    onAdd: () -> Unit, onOpen: (String) -> Unit, onToggle: (String, Boolean) -> Unit, onTrash: () -> Unit,
+    onAdd: () -> Unit, onOpen: (String) -> Unit, onToggle: (String, Boolean) -> Unit, onTrash: () -> Unit, onManage: () -> Unit,
 ) {
     val c = LocalHaru.current
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
     var includeCompleted by rememberSaveable { mutableStateOf(false) }
-    val names = listOf("오늘", "예정", "전체", "완료")
-    val list = if (query.isNotBlank()) data.searchTasks(query, includeCompleted) else when (filter) {
+    val names = listOf("오늘", "예정", "받은함", "전체", "완료")
+    var selectedList by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
+    val baseList = if (query.isNotBlank()) data.searchTasks(query, includeCompleted) else when (filter) {
         0 -> data.todayTasks(today)
         1 -> data.upcomingTasks(today)
-        2 -> data.allOpenTasks()
+        2 -> data.inboxTasks()
+        3 -> data.allOpenTasks()
         else -> data.doneTasks()
     }
+    val list = baseList.filter { (selectedList == null || it.listId == selectedList) && (selectedTag == null || selectedTag in it.tagIds) }
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(16.dp, 16.dp, 16.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("할 일", style = HaruType.title, color = c.text, modifier = Modifier.weight(1f))
+                PillButton("분류", c.surface, c.text, onClick = onManage)
                 Box(Modifier.height(48.dp).clickable(onClick = onTrash).padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
                     Text("휴지통", style = HaruType.body, color = c.textSub)
                 }
             }
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 names.forEachIndexed { i, n ->
                     PillButton(n, if (filter == i) HabitPalettes[1].fill else c.surface, if (filter == i) Color.White else c.text) { filter = i }
                 }
+            }
+            Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PillButton("모든 목록", c.surface, c.text) { selectedList = null }
+                data.lists.forEach { category -> PillButton(category.name, if (selectedList == category.id) HabitPalettes[1].fill else c.surface, if (selectedList == category.id) Color.White else c.text) { selectedList = category.id } }
+                data.tags.forEach { tag -> PillButton("#${tag.name}", if (selectedTag == tag.id) HabitPalettes[2].fill else c.surface, if (selectedTag == tag.id) Color.White else c.text) { selectedTag = if (selectedTag == tag.id) null else tag.id } }
             }
             HaruTextField(query, { query = it }, "제목·메모 검색", Modifier.fillMaxWidth().padding(16.dp, 8.dp))
             if (query.isNotBlank()) {
@@ -143,11 +156,18 @@ fun TasksScreen(
             ) {
                 if (list.isEmpty()) item {
                     Text(
-                        if (query.isNotBlank()) "검색 결과가 없어요" else when (filter) { 0 -> "오늘 할 일이 없어요"; 1 -> "예정된 일이 없어요"; 2 -> "할 일이 없어요"; else -> "완료한 일이 없어요" },
+                        if (query.isNotBlank()) "검색 결과가 없어요" else when (filter) { 0 -> "오늘 할 일이 없어요"; 1 -> "예정된 일이 없어요"; 2 -> "받은함이 비어 있어요"; 3 -> "할 일이 없어요"; else -> "완료한 일이 없어요" },
                         style = HaruType.headline, color = c.textSub, modifier = Modifier.padding(top = 32.dp),
                     )
                 }
-                items(list, key = { "${it.id}:${it.dueDate}:${it.completedAt}" }) { t ->
+                if (filter == 0 && query.isBlank()) {
+                    val overdue = list.filter { it.dueDate?.isBefore(today) == true }
+                    val current = list.filter { it.dueDate == today }
+                    if (overdue.isNotEmpty()) item { Text("지난 할 일", style = HaruType.headline, color = c.errorText) }
+                    items(overdue, key = { "overdue:${it.id}" }) { t -> TaskRow(t, today, { onToggle(t.id, it) }, { onOpen(t.id) }) }
+                    if (current.isNotEmpty()) item { Text("오늘 할 일", style = HaruType.headline, color = c.text) }
+                    items(current, key = { "today:${it.id}" }) { t -> TaskRow(t, today, { onToggle(t.id, it) }, { onOpen(t.id) }) }
+                } else items(list, key = { "${it.id}:${it.dueDate}:${it.completedAt}" }) { t ->
                     TaskRow(t, today, { onToggle(t.id, it) }, { onOpen(t.id) }, canToggle = t.recurrence == null || (t.completedAt == null && data.tasks.firstOrNull { it.id == t.id }?.dueDate == t.dueDate))
                 }
             }

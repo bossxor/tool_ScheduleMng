@@ -45,6 +45,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.lifecycleScope
 import com.bossxor.harugyeol.backup.Backup
 import com.bossxor.harugyeol.backup.BackupException
+import com.bossxor.harugyeol.habit.saveHabitMetadata
+import com.bossxor.harugyeol.habit.dayState
+import com.bossxor.harugyeol.habit.counts
+import com.bossxor.harugyeol.habit.isDone
 import com.bossxor.harugyeol.habit.HabitInputException
 import com.bossxor.harugyeol.habit.addAmount
 import com.bossxor.harugyeol.habit.addHabit
@@ -66,6 +70,10 @@ import com.bossxor.harugyeol.habit.unarchiveHabit
 import com.bossxor.harugyeol.reminders.Notifier
 import com.bossxor.harugyeol.reminders.ReminderScheduler
 import com.bossxor.harugyeol.reminders.SummaryNotice
+import com.bossxor.harugyeol.task.saveTaskList
+import com.bossxor.harugyeol.task.deleteTaskList
+import com.bossxor.harugyeol.task.saveTaskTag
+import com.bossxor.harugyeol.task.deleteTaskTag
 import com.bossxor.harugyeol.task.Task
 import com.bossxor.harugyeol.task.saveTask
 import com.bossxor.harugyeol.task.undoTaskCompletion
@@ -76,6 +84,11 @@ import com.bossxor.harugyeol.task.emptyTrash
 import com.bossxor.harugyeol.task.restoreTask
 import com.bossxor.harugyeol.task.setTaskDone
 import com.bossxor.harugyeol.task.trashTask
+import com.bossxor.harugyeol.ui.OrganizationScreen
+import com.bossxor.harugyeol.ui.AboutScreen
+import com.bossxor.harugyeol.ui.StickerCollectionScreen
+import com.bossxor.harugyeol.ui.HabitRecordScreen
+import com.bossxor.harugyeol.ui.ResolveTimerButtons
 import com.bossxor.harugyeol.ui.ArchiveScreen
 import com.bossxor.harugyeol.ui.CalendarScreen
 import com.bossxor.harugyeol.ui.DetailActions
@@ -115,6 +128,10 @@ sealed interface Screen {
     data class Timer(val id: String) : Screen
     data object Archive : Screen
     data class TaskForm(val id: String?, val date: LocalDate?) : Screen
+    data object Organization : Screen
+    data object About : Screen
+    data object Stickers : Screen
+    data class RecordHabit(val id: String, val date: LocalDate) : Screen
     data object Trash : Screen
 }
 
@@ -124,6 +141,10 @@ class MainActivity : ComponentActivity() {
     private val today = mutableStateOf(LocalDate.now())
     private val notificationsAllowed = mutableStateOf(true)
     private val pendingRestore = mutableStateOf<AppData?>(null)
+    private val recoveryBusy = mutableStateOf(false)
+    private val recordToOpen = mutableStateOf<Pair<String, LocalDate>?>(null)
+    private var updateRunning = false
+    private var waitingInstallPermission = false
     private val taskToOpen = mutableStateOf<String?>(null)
     private val updateStatus = mutableStateOf("")
     private val banner = mutableStateOf("")
@@ -180,67 +201,122 @@ class MainActivity : ComponentActivity() {
     }
 
     /** 새 릴리스를 확인하고, 있으면 받아서 설치한다. 실패는 조용히 넘기되 직접 확인하면 이유를 보여준다. */
+    private suspend fun installDirectFallback(apk: File) {
+        val data = store.state.value.pauseTimer(SystemClock.elapsedRealtime(), bootCount())
+        withContext(Dispatchers.IO) {
+            store.createSnapshot()
+            Updater.saveBackupToDownloads(this@MainActivity, "harugyeol-backup-before-update.json", Backup.encode(data))
+            Updater.installDirectly(this@MainActivity, apk, "Harugyeol-update.apk")
+        }
+    }
+
     private fun checkForUpdate(manual: Boolean) {
+        if (updateRunning || !::store.isInitialized) return
+        updateRunning = true
         lifecycleScope.launch {
             try {
                 if (manual) updateStatus.value = "확인하는 중이에요…"
                 val release = withContext(Dispatchers.IO) { Updater.fetchLatest() }
                 if (release == null || !Updater.isNewer(release.tag, BuildConfig.VERSION_NAME)) {
-                    updateStatus.value = if (manual) "최신 버전이에요" else ""
+                    updateStatus.value = if (manual) if (release == null) "공개된 업데이트가 없어요" else "최신 버전이에요" else ""
                     return@launch
                 }
                 val apk = File(cacheDir, "update.apk")
-                banner.value = "새 버전 ${release.version}을 받는 중이에요 (0%)"
-                updateStatus.value = "새 버전 ${release.version}을 받는 중이에요"
-                withContext(Dispatchers.IO) {
-                    Updater.download(release.apkUrl, apk) { p -> banner.value = "새 버전 ${release.version}을 받는 중이에요 ($p%)" }
-                    Updater.verify(this@MainActivity, apk)
+                val reuse = withContext(Dispatchers.IO) { Updater.reusableApk(this@MainActivity, release, apk) }
+                if (!reuse) {
+                    banner.value = "새 버전 ${release.version}을 받는 중이에요"
+                    withContext(Dispatchers.IO) {
+                        Updater.download(release.apkUrl, apk, expectedSize = release.size) { p ->
+                            lifecycleScope.launch { banner.value = "새 버전 ${release.version}을 받는 중이에요 ($p%)" }
+                        }
+                    }
                 }
-                // 설치 전에 현재 데이터를 내부 스냅샷으로 남긴다
-                store.createSnapshot()
-                banner.value = "새 버전 ${release.version}을 설치하는 중이에요"
+                withContext(Dispatchers.IO) { Updater.verify(this@MainActivity, apk, release.version); store.createSnapshot() }
                 if (!Updater.canInstall(this@MainActivity)) {
                     banner.value = ""
-                    updateStatus.value = "설치를 허용해야 업데이트할 수 있어요"
+                    updateStatus.value = "설치 허용 후 앱으로 돌아오면 이어서 설치해요"
+                    waitingInstallPermission = true
                     startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
                     return@launch
                 }
-                try {
-                    withContext(Dispatchers.IO) { Updater.install(this@MainActivity, apk) }
-                } catch (e: Exception) {
-                    // 앱 내부 설치가 안 되면 다운로드 폴더 + 시스템 설치 화면으로 넘어간다
-                    val backup = Backup.encode(store.state.value)
-                    withContext(Dispatchers.IO) {
-                        Updater.saveBackupToDownloads(this@MainActivity, "harugyeol-backup.json", backup)
-                        Updater.installDirectly(this@MainActivity, apk, "Harugyeol-${release.version}.apk")
-                    }
-                }
+                banner.value = "새 버전 ${release.version}을 설치하는 중이에요"
+                try { withContext(Dispatchers.IO) { Updater.install(this@MainActivity, apk) } }
+                catch (_: Exception) { installDirectFallback(apk) }
             } catch (e: Exception) {
                 banner.value = ""
-                updateStatus.value = if (manual) (e.message ?: "업데이트를 확인하지 못했어요") else ""
-            }
+                updateStatus.value = e.message ?: "업데이트를 확인하지 못했어요. 다음 실행에서 다시 시도해요"
+            } finally { updateRunning = false }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         taskToOpen.value = intent.getStringExtra("taskId")
+        recordToOpen.value = intent.getStringExtra(Notifier.EXTRA_HABIT)?.let { id -> runCatching { id to LocalDate.parse(intent.getStringExtra(Notifier.EXTRA_DATE)) }.getOrNull() }
         enableEdgeToEdge()
         store = try {
             (application as HarugyeolApp).store
         } catch (e: StoreException) {
-            setContent { HaruTheme { com.bossxor.harugyeol.ui.ErrorScreen(e.message ?: "") } }
+            setContent { HaruTheme {
+                com.bossxor.harugyeol.ui.ErrorScreen(
+                    e.message ?: "", onRestore = { openBackup.launch(arrayOf("application/json", "text/plain")) },
+                    onSnapshot = { lifecycleScope.launch {
+                        try { pendingRestore.value = withContext(Dispatchers.IO) { AppStore.readSnapshot(File(filesDir, "data.json")) } }
+                        catch (error: Exception) { toast(error.message ?: "스냅샷을 읽을 수 없어요") }
+                    } }, candidate = pendingRestore.value, busy = recoveryBusy.value,
+                    onCancel = { pendingRestore.value = null },
+                    onConfirm = { val candidate = pendingRestore.value; if (candidate != null && !recoveryBusy.value) lifecycleScope.launch {
+                        recoveryBusy.value = true
+                        try {
+                            withContext(Dispatchers.IO) { AppStore.recover(File(filesDir, "data.json"), candidate) }
+                            (application as HarugyeolApp).observeStore()
+                            pendingRestore.value = null
+                            recreate()
+                        } catch (error: Exception) { toast(error.message ?: "복구하지 못했어요. 원본은 유지돼요") }
+                        finally { recoveryBusy.value = false }
+                    } },
+                )
+            } }
             return
         }
         refreshPermission()
         if (savedInstanceState == null) checkForUpdate(manual = false)
 
         setContent {
-            HaruTheme {
+            val data by store.state.collectAsState()
+            HaruTheme(theme = data.settings.theme) {
                 val c = LocalHaru.current
-                val data by store.state.collectAsState()
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Habits) }
+                var timerTarget by remember { mutableStateOf<String?>(null) }
+                var snapshotConfirm by remember { mutableStateOf(false) }
+                var restoreBusy by remember { mutableStateOf(false) }
+                var celebration by remember { mutableStateOf(false) }
+                LaunchedEffect(recordToOpen.value) {
+                    recordToOpen.value?.let { (id, date) -> screen = Screen.RecordHabit(id, date); recordToOpen.value = null }
+                }
+                suspend fun resolveTimer(discard: Boolean) {
+                    withContext(Dispatchers.IO) { store.update { current ->
+                        val timer = current.timer ?: return@update current
+                        if (discard) current.discardTimer(timer.sessionId)
+                        else current.saveTimer(timer.sessionId, SystemClock.elapsedRealtime(), bootCount(), System.currentTimeMillis())
+                    } }
+                }
+                LaunchedEffect(data.habits, today.value) {
+                    val states = data.habits.filter { it.archivedAt == null }.map { it.dayState(today.value) }.filter { it.counts }
+                    if (states.isNotEmpty() && states.all { it.isDone } && data.settings.lastCelebrationDate != today.value.toString()) {
+                        var first = false
+                        try {
+                            store.update { current ->
+                                val live = current.habits.filter { it.archivedAt == null }.map { it.dayState(today.value) }.filter { it.counts }
+                                if (live.isNotEmpty() && live.all { it.isDone } && current.settings.lastCelebrationDate != today.value.toString()) {
+                                    first = true; current.copy(settings = current.settings.copy(lastCelebrationDate = today.value.toString()))
+                                } else current
+                            }
+                            if (first) { celebration = true; if (data.settings.celebrationHaptics) window.decorView.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM) }
+                        } catch (_: Exception) {}
+                    }
+                }
                 var lastCompletion by remember { mutableStateOf<Pair<Task, Task>?>(null) }
                 LaunchedEffect(taskToOpen.value) {
                     taskToOpen.value?.let { screen = Screen.TaskForm(it, null); taskToOpen.value = null }
@@ -298,6 +374,9 @@ class MainActivity : ComponentActivity() {
                     checkpoint = { change { it.checkpointTimer(SystemClock.elapsedRealtime(), bootCount()) } },
                 )
                 val settingsActions = SettingsActions(
+                    setTheme = { theme -> change { it.copy(settings = it.settings.copy(theme = theme)) } },
+                    setHaptics = { enabled -> change { it.copy(settings = it.settings.copy(celebrationHaptics = enabled)) } },
+                    about = { screen = Screen.About },
                     addWidget = {
                         val manager = android.appwidget.AppWidgetManager.getInstance(this@MainActivity)
                         if (manager.isRequestPinAppWidgetSupported) manager.requestPinAppWidget(android.content.ComponentName(this@MainActivity, com.bossxor.harugyeol.widget.TodayWidget::class.java), null, null)
@@ -318,7 +397,7 @@ class MainActivity : ComponentActivity() {
                     },
                     restore = { openBackup.launch(arrayOf("application/json", "text/plain", "*/*")) },
                     restoreSnapshot = {
-                        scope.launch { toast(if (store.restoreSnapshot()) "스냅샷으로 되돌렸어요" else "스냅샷이 없어요") }
+                        snapshotConfirm = true
                     },
                     checkUpdate = { checkForUpdate(manual = true) },
                 )
@@ -329,7 +408,8 @@ class MainActivity : ComponentActivity() {
                     screen = when (val s = screen) {
                         is Screen.EditHabit -> Screen.Detail(s.id)
                         is Screen.Trash -> Screen.Tasks
-                        is Screen.TaskForm -> Screen.Tasks
+                        is Screen.TaskForm, Screen.Organization -> Screen.Tasks
+                        Screen.About -> Screen.Settings
                         else -> Screen.Habits
                     }
                 }
@@ -337,6 +417,7 @@ class MainActivity : ComponentActivity() {
                 Column(
                     Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.systemBars),
                 ) {
+                    if (celebration) PillButton("오늘 목표를 모두 달성했어요 ✓", c.achievedBg, c.achievedText, Modifier.padding(8.dp)) { celebration = false }
                     lastCompletion?.let { (before, after) ->
                         PillButton("완료 되돌리기", c.surface, c.text, Modifier.padding(8.dp)) {
                             change { it.undoTaskCompletion(before, after) }
@@ -349,8 +430,9 @@ class MainActivity : ComponentActivity() {
                                 data, today.value, actions,
                                 onAdd = { screen = Screen.AddHabit },
                                 onOpen = { screen = Screen.Detail(it) },
-                                onTimer = { screen = Screen.Timer(it) },
+                                onTimer = { id -> if (data.timer != null && data.timer?.habitId != id) timerTarget = id else screen = Screen.Timer(id) },
                                 onArchive = { screen = Screen.Archive },
+                                onStickers = { screen = Screen.Stickers },
                                 banner = banner.value,
                             )
 
@@ -360,6 +442,7 @@ class MainActivity : ComponentActivity() {
                                 onOpen = { screen = Screen.TaskForm(it, null) },
                                 onToggle = { id, done -> toggleTask(id, done) },
                                 onTrash = { screen = Screen.Trash },
+                                onManage = { screen = Screen.Organization },
                             ) }
 
                             Screen.Calendar -> tabStates.SaveableStateProvider("calendar") { CalendarScreen(
@@ -382,19 +465,22 @@ class MainActivity : ComponentActivity() {
                                     val t = today.value
                                     val now = nowMs()
                                     try {
-                                        data.addHabit(n.name, n.colorIndex, n.type, n.unit, n.mode, n.weekdays, n.targetDays, n.targetAmount, t, t, now)
-                                        change {
-                                            it.addHabit(n.name, n.colorIndex, n.type, n.unit, n.mode, n.weekdays, n.targetDays, n.targetAmount, t, t, now)
-                                                .let { d ->
-                                                    val last = d.habits.last()
-                                                    d.editHabit(last.id, last.name, last.colorIndex, n.mode, n.weekdays, n.targetDays, n.targetAmount, n.reminders, t, now)
-                                                }
+                                        withContext(Dispatchers.IO) {
+                                            store.update {
+                                                it.addHabit(n.name, n.colorIndex, n.type, n.unit, n.mode, n.weekdays, n.targetDays, n.targetAmount, n.startDate, t, now)
+                                                    .let { d ->
+                                                        val last = d.habits.last()
+                                                        d.editHabit(last.id, last.name, last.colorIndex, n.mode, n.weekdays, n.targetDays, n.targetAmount, n.reminders, t, now).saveHabitMetadata(last.id, n.note, n.iconKey)
+                                                    }
+                                            }
                                         }
                                         if (n.reminders.isNotEmpty() && !notificationsAllowed.value) requestNotifications()
                                         screen = Screen.Habits
                                         null
-                                    } catch (e: HabitInputException) {
-                                        e.message
+                                    } catch (e: kotlinx.coroutines.CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        e.message ?: "저장하지 못했어요. 다시 시도해 주세요"
                                     }
                                 },
                             )
@@ -420,13 +506,16 @@ class MainActivity : ComponentActivity() {
                                         val t = today.value
                                         val now = nowMs()
                                         try {
-                                            data.editHabit(h.id, n.name, n.colorIndex, n.mode, n.weekdays, n.targetDays, n.targetAmount, n.reminders, t, now)
-                                            change { it.editHabit(h.id, n.name, n.colorIndex, n.mode, n.weekdays, n.targetDays, n.targetAmount, n.reminders, t, now) }
+                                            withContext(Dispatchers.IO) {
+                                                store.update { it.editHabit(h.id, n.name, n.colorIndex, n.mode, n.weekdays, n.targetDays, n.targetAmount, n.reminders, t, now).saveHabitMetadata(h.id, n.note, n.iconKey) }
+                                            }
                                             if (n.reminders.isNotEmpty() && !notificationsAllowed.value) requestNotifications()
                                             screen = Screen.Detail(h.id)
                                             null
-                                        } catch (e: HabitInputException) {
-                                            e.message
+                                        } catch (e: kotlinx.coroutines.CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            e.message ?: "저장하지 못했어요. 다시 시도해 주세요"
                                         }
                                     },
                                 )
@@ -451,26 +540,42 @@ class MainActivity : ComponentActivity() {
                             is Screen.TaskForm -> {
                                 val t = s.id?.let { id -> data.tasks.firstOrNull { it.id == id } }
                                 TaskFormScreen(
-                                    initial = t, defaultDate = s.date, today = today.value,
+                                    initial = t, defaultDate = s.date, today = today.value, data = data,
                                     onClose = { screen = Screen.Tasks },
                                     onTrash = { t?.let { x -> change { it.trashTask(x.id, nowMs()) } }; screen = Screen.Tasks },
                                     onSave = { draft ->
                                         try {
                                             val now = nowMs()
-                                            data.saveTask(t?.id, draft, now)
-                                            scope.launch {
-                                                try {
-                                                    store.update { it.saveTask(t?.id, draft, now) }
-                                                    if (draft.reminders.isNotEmpty() && !notificationsAllowed.value) requestNotifications()
-                                                    screen = Screen.Tasks
-                                                } catch (e: Exception) { toast(e.message ?: "저장하지 못했어요") }
+                                            withContext(Dispatchers.IO) {
+                                                store.update { it.saveTask(t?.id, draft, now) }
                                             }
+                                            if (draft.reminders.isNotEmpty() && !notificationsAllowed.value) requestNotifications()
+                                            screen = Screen.Tasks
                                             null
-                                        } catch (e: HabitInputException) { e.message }
+                                        } catch (e: kotlinx.coroutines.CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            e.message ?: "저장하지 못했어요. 다시 시도해 주세요"
+                                        }
                                     },
                                 )
                             }
 
+                            Screen.Organization -> OrganizationScreen(data, { screen = Screen.Tasks },
+                                saveList = { id, name, color -> try { withContext(Dispatchers.IO) { store.update { it.saveTaskList(id, name, color) } }; null } catch (e: Exception) { e.message ?: "저장하지 못했어요" } },
+                                deleteList = { id -> try { withContext(Dispatchers.IO) { store.update { it.deleteTaskList(id) } }; null } catch (e: Exception) { e.message ?: "삭제하지 못했어요" } },
+                                saveTag = { id, name, color -> try { withContext(Dispatchers.IO) { store.update { it.saveTaskTag(id, name, color) } }; null } catch (e: Exception) { e.message ?: "저장하지 못했어요" } },
+                                deleteTag = { id -> try { withContext(Dispatchers.IO) { store.update { it.deleteTaskTag(id) } }; null } catch (e: Exception) { e.message ?: "삭제하지 못했어요" } },
+                            )
+                            Screen.About -> AboutScreen(BuildConfig.VERSION_NAME) { screen = Screen.Settings }
+                            Screen.Stickers -> StickerCollectionScreen(data, today.value) { screen = Screen.Habits }
+                            is Screen.RecordHabit -> {
+                                val h = data.habits.firstOrNull { it.id == s.id && it.archivedAt == null && it.measureType != com.bossxor.harugyeol.habit.MeasureType.CHECK }
+                                if (h == null) screen = Screen.Habits else HabitRecordScreen(h, s.date, { screen = Screen.Habits }) { amount ->
+                                    try { withContext(Dispatchers.IO) { store.update { it.setTotal(h.id, s.date, amount, today.value, nowMs()) } }; Notifier.cancel(this@MainActivity, h.id); null }
+                                    catch (e: Exception) { e.message ?: "기록하지 못했어요" }
+                                }
+                            }
                             Screen.Trash -> TrashScreen(
                                 data, onBack = { screen = Screen.Tasks },
                                 onRestore = { id -> change { it.restoreTask(id, nowMs()) } },
@@ -482,28 +587,74 @@ class MainActivity : ComponentActivity() {
                     if (isTab) BottomBar(screen) { screen = it }
                 }
 
+                timerTarget?.let { target ->
+                    Dialog(onDismissRequest = { timerTarget = null }) {
+                        PopCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("다른 습관으로 타이머를 바꿀까요?", style = HaruType.headline, color = c.text)
+                                ResolveTimerButtons(data,
+                                    onSave = { scope.launch { try { resolveTimer(false); timerTarget = null; screen = Screen.Timer(target) } catch (e: Exception) { toast(e.message ?: "저장하지 못했어요") } } },
+                                    onDiscard = { scope.launch { try { resolveTimer(true); timerTarget = null; screen = Screen.Timer(target) } catch (e: Exception) { toast(e.message ?: "변경하지 못했어요") } } },
+                                )
+                                PillButton("취소", c.surface, c.text) { timerTarget = null }
+                            }
+                        }
+                    }
+                }
+                if (snapshotConfirm) {
+                    Dialog(onDismissRequest = { if (!restoreBusy) snapshotConfirm = false }) {
+                        PopCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("스냅샷으로 되돌릴까요?", style = HaruType.headline, color = c.text)
+                                Text("현재 데이터는 새 스냅샷으로 보관하고 이전 스냅샷 내용으로 전체 교체해요.", style = HaruType.bodyS, color = c.textSub)
+                                ResolveTimerButtons(data,
+                                    onSave = { scope.launch { try { resolveTimer(false) } catch (e: Exception) { toast(e.message ?: "저장하지 못했어요") } } },
+                                    onDiscard = { scope.launch { try { resolveTimer(true) } catch (e: Exception) { toast(e.message ?: "정리하지 못했어요") } } },
+                                )
+                                if (data.timer == null) PillButton(if (restoreBusy) "복원 중" else "되돌리기", c.errorBg, c.errorText) {
+                                    if (!restoreBusy) {
+                                        restoreBusy = true
+                                        scope.launch {
+                                            try { val restored = withContext(Dispatchers.IO) { store.restoreSnapshot() }; if (restored) { snapshotConfirm = false; toast("스냅샷으로 되돌렸어요") } else toast("유효한 스냅샷이 없어요. 기존 데이터는 그대로예요") }
+                                            catch (e: Exception) { toast(e.message ?: "복원하지 못했어요") }
+                                            finally { restoreBusy = false }
+                                        }
+                                    }
+                                }
+                                PillButton("취소", c.surface, c.text) { if (!restoreBusy) snapshotConfirm = false }
+                            }
+                        }
+                    }
+                }
                 pendingRestore.value?.let { incoming ->
-                    Dialog(onDismissRequest = { pendingRestore.value = null }) {
+                    Dialog(onDismissRequest = { if (!restoreBusy) pendingRestore.value = null }) {
                         PopCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("백업으로 바꿀까요?", style = HaruType.headline, color = c.text)
+                                ResolveTimerButtons(data,
+                                    onSave = { scope.launch { try { resolveTimer(false) } catch (e: Exception) { toast(e.message ?: "저장하지 못했어요") } } },
+                                    onDiscard = { scope.launch { try { resolveTimer(true) } catch (e: Exception) { toast(e.message ?: "정리하지 못했어요") } } },
+                                )
                                 Text(
                                     "지금: 습관 ${data.habits.size}개 · 할 일 ${data.tasks.size}개\n" +
                                         "백업: 습관 ${incoming.habits.size}개 · 할 일 ${incoming.tasks.size}개\n\n" +
                                         "현재 데이터가 모두 백업 내용으로 바뀌어요. 바꾸기 전의 데이터는 스냅샷으로 남겨요." +
-                                        if (data.timer != null) "\n실행 중인 타이머는 사라져요." else "",
+                                        if (data.timer != null) "\n실행 중인 타이머를 먼저 정리해야 해요." else "",
                                     style = HaruType.body, color = c.textSub,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                    PillButton("취소", c.surface, c.text, Modifier.weight(1f)) { pendingRestore.value = null }
-                                    PillButton("교체해서 복원", c.errorBg, c.errorText, Modifier.weight(1f)) {
-                                        pendingRestore.value = null
-                                        scope.launch {
-                                            try {
-                                                store.replaceAll(incoming)
-                                                toast("백업으로 복원했어요")
-                                            } catch (e: Exception) {
-                                                toast("복원하지 못했어요. 기존 데이터는 그대로예요")
+                                    PillButton("취소", c.surface, c.text, Modifier.weight(1f)) { if (!restoreBusy) pendingRestore.value = null }
+                                    if (data.timer == null) PillButton(if (restoreBusy) "복원 중" else "교체해서 복원", c.errorBg, c.errorText, Modifier.weight(1f)) {
+                                        if (!restoreBusy) {
+                                            restoreBusy = true
+                                            scope.launch {
+                                                try {
+                                                    withContext(Dispatchers.IO) { store.replaceAll(incoming) }
+                                                    pendingRestore.value = null
+                                                    toast("백업으로 복원했어요")
+                                                } catch (e: Exception) {
+                                                    toast("복원하지 못했어요. 기존 데이터는 그대로예요")
+                                                } finally { restoreBusy = false }
                                             }
                                         }
                                     }
@@ -520,12 +671,21 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         taskToOpen.value = intent.getStringExtra("taskId")
+        recordToOpen.value = intent.getStringExtra(Notifier.EXTRA_HABIT)?.let { id -> runCatching { id to LocalDate.parse(intent.getStringExtra(Notifier.EXTRA_DATE)) }.getOrNull() }
     }
 
     override fun onResume() {
         super.onResume()
         today.value = LocalDate.now()
         refreshPermission()
+        if (waitingInstallPermission && !updateRunning && ::store.isInitialized) {
+            waitingInstallPermission = false
+            if (Updater.canInstall(this)) checkForUpdate(manual = true)
+            else lifecycleScope.launch {
+                try { installDirectFallback(File(cacheDir, "update.apk")) }
+                catch (e: Exception) { updateStatus.value = e.message ?: "다운로드 폴더에서 설치해 주세요" }
+            }
+        }
     }
 }
 

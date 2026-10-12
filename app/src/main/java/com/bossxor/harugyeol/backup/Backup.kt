@@ -4,6 +4,7 @@ import com.bossxor.harugyeol.AppData
 import com.bossxor.harugyeol.AppStore
 import com.bossxor.harugyeol.SCHEMA_VERSION
 import com.bossxor.harugyeol.habit.*
+import com.bossxor.harugyeol.task.validateTaskRelations
 
 class BackupException(message: String) : Exception(message)
 
@@ -21,7 +22,7 @@ object Backup {
             throw BackupException("파일을 읽을 수 없어요. 다른 백업 파일을 선택해 주세요.")
         }
         validate(data)
-        return data
+        return data.copy(schemaVersion = SCHEMA_VERSION)
     }
 
     fun read(input: java.io.InputStream): AppData {
@@ -39,6 +40,8 @@ object Backup {
         if (d.habits.map { it.id }.toSet().size != d.habits.size) bad("습관 ID가 겹쳐요")
         if (d.tasks.map { it.id }.toSet().size != d.tasks.size) bad("할 일 ID가 겹쳐요")
         if (!TIME.matches(d.settings.dailySummary.time)) bad("하루 요약 시각이 올바르지 않아요")
+        if (d.settings.theme !in listOf("SYSTEM", "LIGHT", "DARK")) bad("테마 설정이 올바르지 않아요")
+        if (d.settings.lastCelebrationDate != null) try { java.time.LocalDate.parse(d.settings.lastCelebrationDate) } catch (_: Exception) { bad("달성 효과 날짜가 올바르지 않아요") }
         if (!TIME.matches(d.settings.allDayReminderTime)) bad("종일 알림 시각이 올바르지 않아요")
         for (h in d.habits) {
             if (h.id.isBlank() || h.note.length > 20_000) bad("습관 정보가 올바르지 않아요")
@@ -74,7 +77,10 @@ object Backup {
             if (habit.measureType != MeasureType.DURATION || t.date.isBefore(habit.startDate) || t.sessionId.isBlank() || t.accumulatedMs < 0 || t.checkpointMs < 0 || t.segmentStartedElapsedMs?.let { it < 0 } == true) bad("타이머 정보가 올바르지 않아요")
             if ((t.state == TimerState.RUNNING) != (t.segmentStartedElapsedMs != null)) bad("타이머 상태가 올바르지 않아요")
         }
+        if (d.lists.count { it.isInbox } != 1 || d.lists.singleOrNull { it.isInbox }?.id != com.bossxor.harugyeol.task.INBOX_ID || d.lists.map { it.id }.distinct().size != d.lists.size || d.lists.any { it.id.isBlank() || it.name.trim().length !in 1..100 || (it.colorIndex != null && it.colorIndex !in 0..3) }) bad("목록 정보가 올바르지 않아요")
+        if (d.tags.map { it.id }.distinct().size != d.tags.size || d.tags.map { com.bossxor.harugyeol.task.normalizedTagName(it.name) }.distinct().size != d.tags.size || d.tags.any { it.id.isBlank() || it.name.trim().length !in 1..50 || (it.colorIndex != null && it.colorIndex !in 0..3) }) bad("태그 정보가 올바르지 않아요")
         for (t in d.tasks) {
+            try { d.validateTaskRelations(t.listId, t.tagIds, t.checklist) } catch (e: HabitInputException) { bad(e.message ?: "작업 관계가 올바르지 않아요") }
             try { com.bossxor.harugyeol.task.validateTaskSchedule(t.dueDate, t.dueTime, t.recurrence, t.reminders) }
             catch (e: HabitInputException) { bad(e.message ?: "작업 일정이 올바르지 않아요") }
             if (t.occurrences.map { it.scheduledDate }.distinct().size != t.occurrences.size || t.occurrences.any { it.scheduledTime != null && !TIME.matches(it.scheduledTime) }) bad("반복 회차가 올바르지 않아요")

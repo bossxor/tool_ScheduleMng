@@ -2,6 +2,8 @@
 
 package com.bossxor.harugyeol.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,11 +24,14 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
@@ -92,7 +97,7 @@ fun PillButton(
             .background(fill, CircleShape)
             .border(2.dp, c.outline, CircleShape)
             .combinedClickable(role = Role.Button, onLongClick = onLongClick, onClick = onClick)
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = HaruType.button, color = textColor)
@@ -106,13 +111,14 @@ fun HaruTextField(
     placeholder: String,
     modifier: Modifier = Modifier,
     numeric: Boolean = false,
+    multiline: Boolean = false,
 ) {
     val c = LocalHaru.current
     val shape = RoundedCornerShape(12.dp)
     BasicTextField(
         value = value,
         onValueChange = onChange,
-        singleLine = true,
+        singleLine = numeric || !multiline,
         textStyle = HaruType.body.copy(color = c.text),
         cursorBrush = SolidColor(c.text),
         keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text),
@@ -120,10 +126,10 @@ fun HaruTextField(
         decorationBox = { inner ->
             Box(
                 Modifier
-                    .heightIn(min = 56.dp)
+                    .heightIn(min = if (multiline && !numeric) 112.dp else 56.dp)
                     .background(c.surface, shape)
                     .border(2.dp, c.outline, shape)
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 if (value.isEmpty()) Text(placeholder, style = HaruType.body, color = c.textSub)
@@ -135,10 +141,23 @@ fun HaruTextField(
 
 /** 스티커 원 (docs/design-system.md 5.1). 그림이 준비되기 전에는 이름 첫 글자를 쓴다. */
 @Composable
-fun Sticker(name: String, p: HabitPalette, state: DayState, progress: Float, size: Dp = 56.dp) {
+fun Sticker(name: String, p: HabitPalette, state: DayState, progress: Float, size: Dp = 56.dp, iconKey: String? = null) {
     val c = LocalHaru.current
     val letter = name.trim().take(1)
-    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+    val stampScale = remember { Animatable(1f) }
+    val previousDone = remember { booleanArrayOf(state.isDone) }
+    LaunchedEffect(state.isDone) {
+        val becameDone = state.isDone && !previousDone[0]
+        previousDone[0] = state.isDone
+        if (becameDone) {
+            stampScale.snapTo(0.86f)
+            stampScale.animateTo(1.08f, tween(130))
+            stampScale.animateTo(1f, tween(150))
+        } else {
+            stampScale.snapTo(1f)
+        }
+    }
+    Box(Modifier.size(size).graphicsLayer { scaleX = stampScale.value; scaleY = stampScale.value }, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 3.dp.toPx()
             val r = this.size.minDimension / 2
@@ -171,7 +190,7 @@ fun Sticker(name: String, p: HabitPalette, state: DayState, progress: Float, siz
             val disc = if (state.isDone || state == DayState.PARTIAL) 0.74f else 0.82f
             drawCircle(Color.White, r * disc, center)
         }
-        Text(
+        if (iconKey != null && iconKey in HabitArt.drawables) HabitArtIcon(iconKey, Modifier.size(size * 0.55f)) else Text(
             letter,
             style = HaruType.headline,
             color = Color(0xFF2C2C2A).copy(alpha = if (state == DayState.REST || state == DayState.EMPTY) 0.45f else 1f),

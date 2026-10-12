@@ -21,7 +21,7 @@ android {
         applicationId = "com.bossxor.harugyeol"
         minSdk = 33
         targetSdk = 37
-        versionCode = 1
+        versionCode = 2
         versionName = "0.1.0"
     }
 
@@ -38,6 +38,9 @@ android {
 
     buildTypes {
         release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }

@@ -33,7 +33,7 @@ class AppStoreTest {
 
     @Test fun `연속 변경이 모두 반영된다`() = runBlocking {
         val store = AppStore.open(file())
-        repeat(50) { i -> store.update { it.copy(settings = Settings(theme = "T$i")) } }
-        assertEquals("T49", AppStore.open(file()).state.value.settings.theme)
+        repeat(50) { i -> store.update { it.copy(settings = Settings(dailySummary = DailySummary(time = "20:${i.toString().padStart(2, '0')}"))) } }
+        assertEquals("20:49", AppStore.open(file()).state.value.settings.dailySummary.time)
     }
 }

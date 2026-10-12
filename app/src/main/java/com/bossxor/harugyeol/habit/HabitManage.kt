@@ -89,3 +89,8 @@ fun AppData.moveHabit(id: String, up: Boolean): AppData {
         }
     })
 }
+
+fun AppData.saveHabitMetadata(id: String, note: String, iconKey: String?): AppData = mapHabit(id) {
+    if (note.length > 20_000) fail("메모는 20,000자까지 입력할 수 있어요")
+    it.copy(note = note, iconKey = iconKey)
+}

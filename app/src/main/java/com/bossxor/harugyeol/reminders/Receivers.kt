@@ -35,7 +35,7 @@ class ActionReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.action != Notifier.ACTION_DONE) return
         val id = intent.getStringExtra(Notifier.EXTRA_HABIT) ?: return
-        val date = intent.getStringExtra(Notifier.EXTRA_DATE)?.let { LocalDate.parse(it) } ?: return
+        val date = intent.getStringExtra(Notifier.EXTRA_DATE)?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return
         val store = try { (ctx.applicationContext as HarugyeolApp).store } catch (_: StoreException) { return }
         try {
             runBlocking { store.update { it.setTotal(id, date, 1, LocalDate.now(), System.currentTimeMillis()) } }
