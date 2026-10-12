@@ -37,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.bossxor.harugyeol.habit.*
+import androidx.compose.runtime.LaunchedEffect
 import com.bossxor.harugyeol.AppData
 import com.bossxor.harugyeol.task.inboxTasks
 import com.bossxor.harugyeol.task.searchTasks
@@ -230,11 +232,14 @@ fun TrashScreen(
 @Composable
 fun CalendarScreen(
     data: AppData, today: LocalDate,
+    initialDate: LocalDate? = null, onDateConsumed: () -> Unit = {}, onHabit: (String, LocalDate) -> Unit = { _, _ -> },
     onAddOn: (LocalDate) -> Unit, onOpen: (String) -> Unit, onToggle: (String, Boolean) -> Unit,
 ) {
     val c = LocalHaru.current
     var month by rememberSaveable(stateSaver = Saver<YearMonth, String>(save = { it.toString() }, restore = { YearMonth.parse(it) })) { mutableStateOf(YearMonth.from(today)) }
     var selected by rememberSaveable(stateSaver = Saver<LocalDate, String>(save = { it.toString() }, restore = { LocalDate.parse(it) })) { mutableStateOf(today) }
+    LaunchedEffect(initialDate) { initialDate?.let { selected = it; month = YearMonth.from(it); onDateConsumed() } }
+    val habitDay = habitsOnDate(data.habits, selected, today)
     val counts = data.tasks.filter { it.deletedAt == null }.flatMap { task ->
         if (task.recurrence == null) listOfNotNull(task.dueDate)
         else task.scheduledDates(month.atDay(1), month.atEndOfMonth()) + task.occurrences.map { it.scheduledDate }
@@ -284,6 +289,27 @@ fun CalendarScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton("어제", c.surface, c.text) { selected = today.minusDays(1); month = YearMonth.from(selected) }
+            PillButton("오늘", c.surface, c.text) { selected = today; month = YearMonth.from(today) }
+        }
+        Text("${selected.monthValue}월 ${selected.dayOfMonth}일 습관 기록", style = HaruType.headline, color = c.text)
+        if (selected.isAfter(today)) Text("미래 날짜에는 아직 습관 기록이 없어요", style = HaruType.body, color = c.textSub)
+        else if (habitDay.isEmpty()) Text("이 날의 대상 습관이나 기록이 없어요", style = HaruType.body, color = c.textSub)
+        habitDay.forEach { h ->
+            val state = h.dayState(selected)
+            val amount = h.logOf(selected)?.amount ?: 0
+            val target = h.goalFor(selected)?.targetAmount ?: 1
+            PopCard(Modifier.fillMaxWidth(), onClick = { onHabit(h.id, selected) }) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Sticker(h.name, palette(h.colorIndex), state, (amount.toFloat() / target).coerceIn(0f, 1f), iconKey = h.iconKey)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(h.name + if (h.archivedAt != null) " · 보관됨" else "", style = HaruType.headline, color = c.text)
+                        Text(if (state == DayState.SKIPPED) "건너뛴 날" else h.amountText(amount, target) + if (state.isDone) " · 달성" else "", style = HaruType.body, color = c.text)
                     }
                 }
             }

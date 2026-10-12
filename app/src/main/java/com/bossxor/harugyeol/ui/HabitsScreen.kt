@@ -71,7 +71,7 @@ fun HabitsScreen(
     data: AppData, today: LocalDate, actions: HabitActions,
     onAdd: () -> Unit, onOpen: (String) -> Unit, onTimer: (String) -> Unit,
     onArchive: () -> Unit,
-    onStickers: () -> Unit, banner: String = "",
+    onStickers: () -> Unit, onDate: (LocalDate) -> Unit, banner: String = "",
 ) {
     val c = LocalHaru.current
     val habits = data.habits.filter { it.archivedAt == null }.sortedBy { it.sortOrder }
@@ -125,7 +125,7 @@ fun HabitsScreen(
                     ReorderRow(h, first = h.id == habits.first().id, last = h.id == habits.last().id, actions)
                 }
             } else {
-                item { SummaryCard(habits, states, today, onStickers) }
+                item { SummaryCard(habits, states, today, onStickers, onDate) }
                 if (habits.isEmpty()) {
                     item {
                         Column(
@@ -224,7 +224,7 @@ private fun SectionTitle(title: String) {
 }
 
 @Composable
-private fun SummaryCard(habits: List<Habit>, states: Map<String, DayState>, today: LocalDate, onStickers: () -> Unit) {
+private fun SummaryCard(habits: List<Habit>, states: Map<String, DayState>, today: LocalDate, onStickers: () -> Unit, onDate: (LocalDate) -> Unit) {
     val c = LocalHaru.current
     val counted = habits.filter { states.getValue(it.id).counts }
     val done = counted.count { states.getValue(it.id).isDone }
@@ -237,14 +237,14 @@ private fun SummaryCard(habits: List<Habit>, states: Map<String, DayState>, toda
                     style = HaruType.body, color = c.textSub, modifier = Modifier.padding(bottom = 6.dp),
                 )
             }
-            WeekStrip(habits, today)
+            WeekStrip(habits, today, onDate)
             PillButton("스티커 모음", c.surface, c.text, onClick = onStickers)
         }
     }
 }
 
 @Composable
-private fun WeekStrip(habits: List<Habit>, today: LocalDate) {
+private fun WeekStrip(habits: List<Habit>, today: LocalDate, onDate: (LocalDate) -> Unit) {
     val c = LocalHaru.current
     val start = weekStart(today)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -261,6 +261,7 @@ private fun WeekStrip(habits: List<Habit>, today: LocalDate) {
                 Box(
                     Modifier
                         .size(36.dp)
+                        .clickable(onClickLabel = "${d.monthValue}월 ${d.dayOfMonth}일 기록 보기") { onDate(d) }
                         .background(if (allDone) HabitPalettes[3].fill else c.surface, CircleShape)
                         .border(
                             if (d == today) 3.dp else if (sts.isEmpty() || future) 1.dp else 2.dp,

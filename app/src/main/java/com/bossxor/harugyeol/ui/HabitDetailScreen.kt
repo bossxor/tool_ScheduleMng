@@ -58,11 +58,11 @@ class DetailActions(
 @Composable
 fun HabitDetailScreen(
     habit: Habit, today: LocalDate, actions: DetailActions, onBack: () -> Unit,
-    onEdit: () -> Unit, onArchive: () -> Unit, onCancelPending: () -> Unit,
+    onEdit: () -> Unit, onArchive: () -> Unit, onCancelPending: () -> Unit, initialDate: LocalDate? = null,
 ) {
     val c = LocalHaru.current
     val p = palette(habit.colorIndex)
-    var month by remember { mutableStateOf(YearMonth.from(today)) }
+    var month by remember { mutableStateOf(YearMonth.from(initialDate ?: today)) }
     var showMonthRate by remember { mutableStateOf(true) }
     var editing by remember { mutableStateOf<LocalDate?>(null) }
     var confirmArchive by remember { mutableStateOf(false) }
@@ -94,6 +94,16 @@ fun HabitDetailScreen(
                 Column {
                     Text(habit.goalLabel(), style = HaruType.headline, color = c.text)
                     Text("${habit.startDate.monthValue}월 ${habit.startDate.dayOfMonth}일부터", style = HaruType.bodyS, color = c.textSub)
+                }
+            }
+            initialDate?.takeIf { !it.isAfter(today) && !it.isBefore(habit.startDate) }?.let { date ->
+                PopCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("${date.year}년 ${date.monthValue}월 ${date.dayOfMonth}일 기록", style = HaruType.headline, color = c.text)
+                        val log = habit.logOf(date)
+                        Text(if (log?.skipped == true) "건너뛴 날" else habit.amountText(log?.amount ?: 0, habit.goalFor(date)?.targetAmount ?: 1), style = HaruType.body, color = c.text)
+                        if (!readOnly) PillButton("이 날짜 기록 수정", c.surface, c.text) { editing = date }
+                    }
                 }
             }
             if (readOnly) Text("보관한 습관 · 기록은 읽기 전용이에요", style = HaruType.bodyS, color = c.textSub)

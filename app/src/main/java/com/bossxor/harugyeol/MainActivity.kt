@@ -123,7 +123,7 @@ sealed interface Screen {
     data object Calendar : Screen
     data object Settings : Screen
     data object AddHabit : Screen
-    data class Detail(val id: String) : Screen
+    data class Detail(val id: String, val date: LocalDate? = null) : Screen
     data class EditHabit(val id: String) : Screen
     data class Timer(val id: String) : Screen
     data object Archive : Screen
@@ -288,6 +288,7 @@ class MainActivity : ComponentActivity() {
                 val c = LocalHaru.current
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Habits) }
+                var calendarDate by remember { mutableStateOf<LocalDate?>(null) }
                 var timerTarget by remember { mutableStateOf<String?>(null) }
                 var snapshotConfirm by remember { mutableStateOf(false) }
                 var restoreBusy by remember { mutableStateOf(false) }
@@ -406,6 +407,7 @@ class MainActivity : ComponentActivity() {
                 val isTab = screen is Screen.Habits || screen is Screen.Tasks || screen is Screen.Calendar || screen is Screen.Settings
                 BackHandler(enabled = screen != Screen.Habits) {
                     screen = when (val s = screen) {
+                        is Screen.Detail -> if (s.date != null) Screen.Calendar else Screen.Habits
                         is Screen.EditHabit -> Screen.Detail(s.id)
                         is Screen.Trash -> Screen.Tasks
                         is Screen.TaskForm, Screen.Organization -> Screen.Tasks
@@ -433,6 +435,7 @@ class MainActivity : ComponentActivity() {
                                 onTimer = { id -> if (data.timer != null && data.timer?.habitId != id) timerTarget = id else screen = Screen.Timer(id) },
                                 onArchive = { screen = Screen.Archive },
                                 onStickers = { screen = Screen.Stickers },
+                                onDate = { calendarDate = it; screen = Screen.Calendar },
                                 banner = banner.value,
                             )
 
@@ -447,6 +450,8 @@ class MainActivity : ComponentActivity() {
 
                             Screen.Calendar -> tabStates.SaveableStateProvider("calendar") { CalendarScreen(
                                 data, today.value,
+                                initialDate = calendarDate, onDateConsumed = { calendarDate = null },
+                                onHabit = { id, date -> screen = Screen.Detail(id, date) },
                                 onAddOn = { screen = Screen.TaskForm(null, it) },
                                 onOpen = { screen = Screen.TaskForm(it, null) },
                                 onToggle = { id, done -> toggleTask(id, done) },
@@ -488,8 +493,8 @@ class MainActivity : ComponentActivity() {
                             is Screen.Detail -> {
                                 val h = data.habits.firstOrNull { it.id == s.id }
                                 if (h == null) screen = Screen.Habits else HabitDetailScreen(
-                                    h, today.value, detailActions,
-                                    onBack = { screen = Screen.Habits },
+                                    h, today.value, detailActions, initialDate = s.date,
+                                    onBack = { screen = if (s.date != null) Screen.Calendar else Screen.Habits },
                                     onEdit = { screen = Screen.EditHabit(h.id) },
                                     onArchive = { change { it.archiveHabit(h.id, nowMs()) }; screen = Screen.Habits },
                                     onCancelPending = { change { it.cancelPendingGoal(h.id, today.value, nowMs()) } },

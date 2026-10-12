@@ -117,3 +117,9 @@ fun dayProgress(habits: List<Habit>, date: LocalDate): Float {
     }
     return if (progress.isEmpty()) 0f else progress.average().toFloat()
 }
+
+/** 지난 날짜의 대상 습관과 기록. 보관된 습관도 해당 날짜 기록은 유지한다. */
+fun habitsOnDate(habits: List<Habit>, date: LocalDate, today: LocalDate): List<Habit> =
+    if (date.isAfter(today)) emptyList() else habits.filter { h ->
+        !date.isBefore(h.startDate) && (h.isTarget(date) || h.logOf(date) != null)
+    }.sortedBy { it.sortOrder }
