@@ -1,0 +1,11 @@
+# signing keys and secrets
+*.jks
+*.keystore
+keystore.properties
+local.properties
+
+# build output
+build/
+.gradle/
+*.apk
+*.aab

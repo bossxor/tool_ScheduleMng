@@ -10,7 +10,7 @@
 | 플랫폼 | Android 네이티브, Kotlin | 요청 플랫폼에 집중하고 알림·설치 API를 직접 사용 |
 | UI | Jetpack Compose, Material 3, Navigation Compose | 공식 UI 도구와 표준 컴포넌트 활용 |
 | 상태 | ViewModel, Coroutines, Flow | 화면 상태와 저장소 연결 |
-| 저장 | 앱 내부 JSON 파일 하나, `android.util.AtomicFile` | DB 없이 단순 구조, 백업 파일과 같은 형식 |
+| 저장 | 앱 내부 JSON 파일 하나, 임시 파일 쓰기·동기화 후 원자적 이동(`java.nio`) | DB 없이 단순 구조, 백업 파일과 같은 형식 |
 | 직렬화 | kotlinx.serialization | 저장·백업·복원이 같은 코드 사용 |
 | 알림 | AlarmManager(`USE_EXACT_ALARM`), NotificationManager | 사용자가 정한 시각의 알림 |
 | 파일 | Storage Access Framework | 사용자가 지정한 백업 파일 읽기·쓰기 |
@@ -19,7 +19,7 @@
 | 테스트 | JUnit, Compose UI 테스트 | 날짜 계산·파일 검증·사용 흐름 검증 |
 
 최소 지원 버전은 Android 13/API 33이다. 알림 권한과 `USE_EXACT_ALARM`이 항상 있어 버전 분기가 사라진다.
-우선 검증 기기 갤럭시 S26 울트라는 출시 기준 Android 16이다. 설치된 버전과 절전 설정은 기기 검증 때 확인한다.
+우선 검증 기기 갤럭시 S26 울트라(SM-S948N)는 Android 17(API 37), One UI 9.0이다(2026-10-12 adb로 확인). 절전 설정은 기기 검증 때 확인한다. compileSdk·targetSdk는 37이다(Compose 1.12가 compileSdk 37을 요구한다). AGP 9.4.1, Kotlin 2.4.21, Compose BOM 2026.09.00, Gradle 9.8.1로 빌드를 확인했다.
 compileSdk·targetSdk·라이브러리 버전은 구현 시작 시 공식 안정 버전을 확인해 고정한다.
 M1에는 서버, 로그인, 외부 분석 SDK를 넣지 않는다. 네트워크는 업데이트 확인·다운로드에만 쓴다.
 
@@ -53,7 +53,7 @@ flowchart LR
 ### 3.1 파일과 쓰기
 
 - 위치는 `filesDir/data.json`이다. 설정을 포함한 앱 데이터 전체가 이 파일 하나다.
-- 쓰기는 `AtomicFile`로 임시 파일에 쓰고 동기화한 뒤 교체한다. 쓰는 도중 앱이 종료돼도 직전 파일 또는 새 파일이 온전히 남는다.
+- 쓰기는 임시 파일(`data.json.tmp`)에 쓰고 `fsync`한 뒤 `Files.move(ATOMIC_MOVE)`로 교체한다. JVM 단위 테스트에서 검증할 수 있도록 `AtomicFile` 대신 `java.nio`를 쓴다. 쓰는 도중 앱이 종료돼도 직전 파일 또는 새 파일이 온전히 남는다.
 - 변경마다 전체 파일을 다시 쓴다. 습관 20개를 10년 기록해도 약 3MB 수준이라 개인 사용에 충분하다.
   쓰기 지연이 체감되면 연도별 기록 파일 분리를 검토한다.
 - 시작 시 파일을 읽을 수 없으면 자동으로 덮어쓰지 않는다. 복구 화면에서 내부 스냅샷이나 백업 파일 복원을 안내한다.
