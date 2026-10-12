@@ -14,8 +14,8 @@ import com.bossxor.harugyeol.habit.MeasureType
 import java.time.LocalDate
 
 object Notifier {
-    const val CH_HABIT = "habit"
-    const val CH_SUMMARY = "summary"
+    const val CH_HABIT = "habit_v2"
+    const val CH_SUMMARY = "summary_v2"
     const val EXTRA_HABIT = "habitId"
     const val EXTRA_DATE = "date"
     const val ACTION_DONE = "com.bossxor.harugyeol.DONE"
@@ -25,12 +25,15 @@ object Notifier {
 
     fun ensureChannels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
+        // 중요도는 채널을 만든 뒤 바꿀 수 없어 새 채널을 쓰고 이전 채널은 지운다
+        nm.deleteNotificationChannel("habit")
+        nm.deleteNotificationChannel("summary")
         nm.createNotificationChannel(
-            NotificationChannel(CH_HABIT, "습관 알림", NotificationManager.IMPORTANCE_DEFAULT)
+            NotificationChannel(CH_HABIT, "습관 알림", NotificationManager.IMPORTANCE_HIGH)
                 .apply { lockscreenVisibility = Notification.VISIBILITY_PRIVATE }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CH_SUMMARY, "하루 요약", NotificationManager.IMPORTANCE_DEFAULT)
+            NotificationChannel(CH_SUMMARY, "하루 요약", NotificationManager.IMPORTANCE_HIGH)
                 .apply { lockscreenVisibility = Notification.VISIBILITY_PRIVATE }
         )
     }
