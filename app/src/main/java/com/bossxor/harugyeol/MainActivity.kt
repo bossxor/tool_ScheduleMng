@@ -34,6 +34,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -163,12 +164,9 @@ class MainActivity : ComponentActivity() {
     private fun readBackup(uri: Uri) {
         lifecycleScope.launch {
             try {
-                val text = withContext(Dispatchers.IO) {
-                    contentResolver.openInputStream(uri)!!.use { it.readBytes() }.also {
-                        if (it.size > Backup.MAX_BYTES) throw BackupException("파일이 너무 커요")
-                    }.toString(Charsets.UTF_8)
+                pendingRestore.value = withContext(Dispatchers.IO) {
+                    contentResolver.openInputStream(uri)!!.use { Backup.read(it) }
                 }
-                pendingRestore.value = Backup.decode(text)
             } catch (e: BackupException) {
                 toast(e.message ?: "복원할 수 없어요")
             } catch (e: Exception) {
@@ -195,7 +193,7 @@ class MainActivity : ComponentActivity() {
                     Updater.verify(this@MainActivity, apk)
                 }
                 // 설치 전에 현재 데이터를 내부 스냅샷으로 남긴다
-                store.replaceAll(store.state.value)
+                store.createSnapshot()
                 banner.value = "새 버전 ${release.version}을 설치하는 중이에요"
                 if (!Updater.canInstall(this@MainActivity)) {
                     banner.value = ""
@@ -294,6 +292,7 @@ class MainActivity : ComponentActivity() {
                     checkUpdate = { checkForUpdate(manual = true) },
                 )
 
+                val tabStates = rememberSaveableStateHolder()
                 val isTab = screen is Screen.Habits || screen is Screen.Tasks || screen is Screen.Calendar || screen is Screen.Settings
                 BackHandler(enabled = screen != Screen.Habits) {
                     screen = when (val s = screen) {
@@ -318,20 +317,20 @@ class MainActivity : ComponentActivity() {
                                 banner = banner.value,
                             )
 
-                            Screen.Tasks -> TasksScreen(
+                            Screen.Tasks -> tabStates.SaveableStateProvider("tasks") { TasksScreen(
                                 data, today.value,
                                 onAdd = { screen = Screen.TaskForm(null, null) },
                                 onOpen = { screen = Screen.TaskForm(it, null) },
                                 onToggle = { id, done -> change { it.setTaskDone(id, done, nowMs()) } },
                                 onTrash = { screen = Screen.Trash },
-                            )
+                            ) }
 
-                            Screen.Calendar -> CalendarScreen(
+                            Screen.Calendar -> tabStates.SaveableStateProvider("calendar") { CalendarScreen(
                                 data, today.value,
                                 onAddOn = { screen = Screen.TaskForm(null, it) },
                                 onOpen = { screen = Screen.TaskForm(it, null) },
                                 onToggle = { id, done -> change { it.setTaskDone(id, done, nowMs()) } },
-                            )
+                            ) }
 
                             Screen.Settings -> SettingsScreen(
                                 data, notificationsAllowed.value, store.snapshotTime(),

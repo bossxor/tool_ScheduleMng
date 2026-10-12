@@ -31,11 +31,15 @@ object Updater {
 
     /** "v1.2.3" → [1,2,3] */
     fun parseVersion(s: String): List<Int> =
-        s.trim().removePrefix("v").removePrefix("V").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+        s.trim().removePrefix("v").removePrefix("V").let { version ->
+            if (!Regex("""\d+(\.\d+)*""").matches(version)) emptyList()
+            else version.split('.').map { it.toIntOrNull() ?: return emptyList() }
+        }
 
     fun isNewer(remote: String, local: String): Boolean {
         val r = parseVersion(remote)
         val l = parseVersion(local)
+        if (r.isEmpty() || l.isEmpty()) return false
         for (i in 0 until maxOf(r.size, l.size)) {
             val a = r.getOrElse(i) { 0 }
             val b = l.getOrElse(i) { 0 }
@@ -61,7 +65,9 @@ object Updater {
     }
 
     fun parseRelease(root: JsonObject): Release? {
+        if (root["draft"]?.jsonPrimitive?.content == "true" || root["prerelease"]?.jsonPrimitive?.content == "true") return null
         val tag = root["tag_name"]?.jsonPrimitive?.content ?: return null
+        if (parseVersion(tag).isEmpty()) return null
         val assets: JsonArray = root["assets"]?.jsonArray ?: return null
         val apks = assets.map { it.jsonObject }.filter { it["name"]?.jsonPrimitive?.content?.endsWith(".apk") == true }
         if (apks.size != 1) return null // asset이 하나가 아니면 안전하게 건너뛴다
@@ -97,18 +103,23 @@ object Updater {
                     }
                 }
             }
+            if (read == 0L || (total >= 0 && read != total)) throw UpdateException("다운로드가 끝나지 않았어요")
             if (!tmp.renameTo(dest)) throw UpdateException("파일을 저장하지 못했어요")
         } finally {
             conn.disconnect()
         }
     }
 
-    /** 패키지명과 버전 코드를 확인한다. 서명 일치는 설치 과정에서 시스템이 강제한다. */
+    /** 설치 전에 패키지명·버전 코드·서명 일치를 확인한다. */
     fun verify(ctx: Context, apk: File) {
-        val info = ctx.packageManager.getPackageArchiveInfo(apk.path, 0)
+        val info = ctx.packageManager.getPackageArchiveInfo(apk.path, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
             ?: throw UpdateException("설치 파일을 읽을 수 없어요")
         if (info.packageName != ctx.packageName) throw UpdateException("다른 앱의 설치 파일이에요")
-        val current = ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode
+        val current = ctx.packageManager.getPackageInfo(ctx.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES).longVersionCode
+        val signatures = info.signingInfo?.apkContentsSigners.orEmpty()
+        if (signatures.isEmpty() || signatures.any {
+                !ctx.packageManager.hasSigningCertificate(ctx.packageName, it.toByteArray(), android.content.pm.PackageManager.CERT_INPUT_RAW_X509)
+            }) throw UpdateException("설치 파일의 서명이 달라요")
         if (info.longVersionCode <= current) throw UpdateException("이미 설치된 버전이에요")
     }
 
@@ -154,7 +165,8 @@ object Updater {
             put(MediaStore.Downloads.DISPLAY_NAME, name)
             put(MediaStore.Downloads.MIME_TYPE, "application/json")
         }
-        val uri = ctx.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return
-        ctx.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+        val uri = ctx.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw UpdateException("백업 파일을 저장하지 못했어요")
+        val output = ctx.contentResolver.openOutputStream(uri) ?: throw UpdateException("백업 파일을 열 수 없어요")
+        output.use { it.write(text.toByteArray()) }
     }
 }

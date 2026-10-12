@@ -3,7 +3,7 @@ package com.bossxor.harugyeol.backup
 import com.bossxor.harugyeol.AppData
 import com.bossxor.harugyeol.AppStore
 import com.bossxor.harugyeol.SCHEMA_VERSION
-import com.bossxor.harugyeol.habit.MAX_AMOUNT
+import com.bossxor.harugyeol.habit.*
 
 class BackupException(message: String) : Exception(message)
 
@@ -14,7 +14,7 @@ object Backup {
     fun encode(data: AppData): String = AppStore.json.encodeToString(AppData.serializer(), data)
 
     fun decode(text: String): AppData {
-        if (text.length > MAX_BYTES) throw BackupException("파일이 너무 커요")
+        if (text.toByteArray(Charsets.UTF_8).size > MAX_BYTES) throw BackupException("파일이 너무 커요")
         val data = try {
             AppStore.json.decodeFromString<AppData>(text)
         } catch (e: Exception) {
@@ -22,6 +22,12 @@ object Backup {
         }
         validate(data)
         return data
+    }
+
+    fun read(input: java.io.InputStream): AppData {
+        val bytes = input.readNBytes(MAX_BYTES + 1)
+        if (bytes.size > MAX_BYTES) throw BackupException("파일이 너무 커요")
+        return decode(bytes.toString(Charsets.UTF_8))
     }
 
     private val TIME = Regex("""([01]\d|2[0-3]):[0-5]\d""")
@@ -34,22 +40,41 @@ object Backup {
         if (d.tasks.map { it.id }.toSet().size != d.tasks.size) bad("할 일 ID가 겹쳐요")
         if (!TIME.matches(d.settings.dailySummary.time)) bad("하루 요약 시각이 올바르지 않아요")
         for (h in d.habits) {
+            if (h.id.isBlank() || h.note.length > 20_000) bad("습관 정보가 올바르지 않아요")
+            when (h.measureType) {
+                MeasureType.CHECK -> if (h.unit != null) bad("완료형 단위가 올바르지 않아요")
+                MeasureType.QUANTITY -> if (h.unit.isNullOrBlank() || h.unit.length > 20) bad("수량 단위가 올바르지 않아요")
+                MeasureType.DURATION -> if (h.unit != "분") bad("시간 단위가 올바르지 않아요")
+            }
             if (h.name.isBlank() || h.name.length > 100) bad("습관 이름이 올바르지 않아요")
             if (h.colorIndex !in 0..3) bad("습관 색이 올바르지 않아요")
             if (h.goals.isEmpty()) bad("목표가 없는 습관이 있어요")
             if (h.goals.map { it.effectiveFrom }.toSet().size != h.goals.size) bad("목표 적용일이 겹쳐요")
-            if (h.goals.none { !it.effectiveFrom.isAfter(h.startDate) }) bad("시작일의 목표가 없어요")
+            if (h.goals.minOf { it.effectiveFrom } != h.startDate) bad("시작일의 목표가 없어요")
             for (g in h.goals) {
+                if (h.measureType == MeasureType.CHECK && g.targetAmount != 1L) bad("완료형 목표가 올바르지 않아요")
+                when (g.mode) {
+                    GoalMode.DAILY -> if (g.weekdays != null || g.targetDays != null) bad("매일 목표가 올바르지 않아요")
+                    GoalMode.WEEKDAYS -> if (g.weekdays.isNullOrEmpty() || g.weekdays.distinct().size != g.weekdays.size || g.targetDays != null) bad("요일 목표가 올바르지 않아요")
+                    GoalMode.WEEKLY_COUNT -> if (g.targetDays == null || g.weekdays != null) bad("주 목표가 올바르지 않아요")
+                }
                 if (g.targetAmount !in 1..MAX_AMOUNT) bad("목표량이 올바르지 않아요")
                 if (g.weekdays?.any { it !in 1..7 } == true) bad("요일이 올바르지 않아요")
                 if (g.targetDays != null && g.targetDays !in 1..7) bad("주 목표 일수가 올바르지 않아요")
             }
             if (h.logs.map { it.date }.toSet().size != h.logs.size) bad("같은 날짜의 기록이 겹쳐요")
             if (h.logs.any { it.amount !in 0..MAX_AMOUNT }) bad("기록량이 올바르지 않아요")
+            if (h.logs.any { it.date.isBefore(h.startDate) || (it.skipped && it.amount != 0L) || (h.measureType == MeasureType.CHECK && it.amount > 1) }) bad("습관 기록이 올바르지 않아요")
+            if (h.reminders.distinct().size != h.reminders.size) bad("알림 시각이 겹쳐요")
             if (h.reminders.size > 5 || h.reminders.any { !TIME.matches(it) }) bad("알림 시각이 올바르지 않아요")
         }
-        d.timer?.let { t -> if (d.habits.none { it.id == t.habitId }) bad("타이머의 습관을 찾을 수 없어요") }
+        d.timer?.let { t ->
+            val habit = d.habits.firstOrNull { it.id == t.habitId } ?: bad("타이머의 습관을 찾을 수 없어요")
+            if (habit.measureType != MeasureType.DURATION || t.date.isBefore(habit.startDate) || t.sessionId.isBlank() || t.accumulatedMs < 0 || t.checkpointMs < 0 || t.segmentStartedElapsedMs?.let { it < 0 } == true) bad("타이머 정보가 올바르지 않아요")
+            if ((t.state == TimerState.RUNNING) != (t.segmentStartedElapsedMs != null)) bad("타이머 상태가 올바르지 않아요")
+        }
         for (t in d.tasks) {
+            if (t.id.isBlank() || t.note.length > 20_000) bad("할 일 정보가 올바르지 않아요")
             if (t.title.isBlank() || t.title.length > 500) bad("할 일 제목이 올바르지 않아요")
             if (t.priority !in 0..3) bad("우선순위가 올바르지 않아요")
         }

@@ -42,11 +42,11 @@ fun AppData.addTask(title: String, note: String, priority: Int, dueDate: LocalDa
 
 fun AppData.editTask(id: String, title: String, note: String, priority: Int, dueDate: LocalDate?, now: Long): AppData {
     check(title, note, priority)
-    return mapTask(id) { it.copy(title = title.trim(), note = note, priority = priority, dueDate = dueDate, updatedAt = now) }
+    return mapTask(id) { if (it.deletedAt != null) fail("휴지통의 할 일은 편집할 수 없어요"); it.copy(title = title.trim(), note = note, priority = priority, dueDate = dueDate, updatedAt = now) }
 }
 
 fun AppData.setTaskDone(id: String, done: Boolean, now: Long): AppData =
-    mapTask(id) { it.copy(completedAt = if (done) now else null, updatedAt = now) }
+    mapTask(id) { if (it.deletedAt != null || (it.completedAt != null) == done) it else it.copy(completedAt = if (done) now else null, updatedAt = now) }
 
 fun AppData.trashTask(id: String, now: Long): AppData = mapTask(id) { it.copy(deletedAt = now, updatedAt = now) }
 
@@ -78,3 +78,12 @@ fun AppData.trashedTasks() = tasks.filter { it.deletedAt != null }.sortedByDesce
 
 fun AppData.tasksOn(date: LocalDate) =
     tasks.filter { it.deletedAt == null && it.dueDate == date }.sortedWith(compareBy<Task> { it.completedAt != null }.then(order))
+
+/** 검색은 제목·메모를 대상으로 하며 완료 포함을 선택한다. */
+fun AppData.searchTasks(query: String, includeCompleted: Boolean = false): List<Task> {
+    val term = query.trim()
+    return tasks.filter {
+        it.deletedAt == null && (includeCompleted || it.completedAt == null) &&
+            (it.title.contains(term, ignoreCase = true) || it.note.contains(term, ignoreCase = true))
+    }.sortedWith(order)
+}

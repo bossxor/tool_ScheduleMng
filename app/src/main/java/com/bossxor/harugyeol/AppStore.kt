@@ -50,9 +50,15 @@ class AppStore private constructor(private val file: File, initial: AppData) {
 
     /** 현재 데이터를 내부 스냅샷으로 남기고 새 데이터로 통째로 바꾼다 */
     suspend fun replaceAll(newData: AppData) = mutex.withLock {
-        if (file.exists()) Files.copy(file.toPath(), snapshotFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        com.bossxor.harugyeol.backup.Backup.validate(newData)
+        write(snapshotFile, _state.value)
         write(file, newData)
         _state.value = newData
+    }
+
+    /** 업데이트 전 상태를 잠금 안에서 보관한다. 현재 데이터를 과거 값으로 교체하지 않는다. */
+    suspend fun createSnapshot() = mutex.withLock {
+        write(snapshotFile, _state.value)
     }
 
     /** 마지막 스냅샷 시각(없으면 null) */
@@ -61,8 +67,8 @@ class AppStore private constructor(private val file: File, initial: AppData) {
     /** 스냅샷으로 되돌린다. 되돌리기 전 데이터가 새 스냅샷이 된다. */
     suspend fun restoreSnapshot(): Boolean = mutex.withLock {
         if (!snapshotFile.exists()) return false
-        val data = try { json.decodeFromString<AppData>(snapshotFile.readText()) } catch (e: Exception) { return false }
-        Files.copy(file.toPath(), snapshotFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        val data = try { snapshotFile.inputStream().use { com.bossxor.harugyeol.backup.Backup.read(it) } } catch (e: Exception) { return false }
+        write(snapshotFile, _state.value)
         write(file, data)
         _state.value = data
         true
@@ -75,7 +81,7 @@ class AppStore private constructor(private val file: File, initial: AppData) {
         fun open(file: File): AppStore {
             if (!file.exists()) return AppStore(file, AppData())
             val data = try {
-                json.decodeFromString<AppData>(file.readText())
+                file.inputStream().use { com.bossxor.harugyeol.backup.Backup.read(it) }
             } catch (e: Exception) {
                 throw StoreException("저장 파일을 읽을 수 없어요", e)
             }

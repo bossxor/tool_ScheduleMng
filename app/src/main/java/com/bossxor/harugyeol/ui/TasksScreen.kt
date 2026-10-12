@@ -19,12 +19,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bossxor.harugyeol.AppData
+import com.bossxor.harugyeol.task.searchTasks
 import com.bossxor.harugyeol.task.Task
 import com.bossxor.harugyeol.task.allOpenTasks
 import com.bossxor.harugyeol.task.doneTasks
@@ -102,9 +107,11 @@ fun TasksScreen(
     onAdd: () -> Unit, onOpen: (String) -> Unit, onToggle: (String, Boolean) -> Unit, onTrash: () -> Unit,
 ) {
     val c = LocalHaru.current
-    var filter by remember { mutableIntStateOf(0) }
+    var filter by rememberSaveable { mutableIntStateOf(0) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var includeCompleted by rememberSaveable { mutableStateOf(false) }
     val names = listOf("오늘", "예정", "전체", "완료")
-    val list = when (filter) {
+    val list = if (query.isNotBlank()) data.searchTasks(query, includeCompleted) else when (filter) {
         0 -> data.todayTasks(today)
         1 -> data.upcomingTasks(today)
         2 -> data.allOpenTasks()
@@ -123,6 +130,10 @@ fun TasksScreen(
                     PillButton(n, if (filter == i) HabitPalettes[1].fill else c.surface, if (filter == i) Color.White else c.text) { filter = i }
                 }
             }
+            HaruTextField(query, { query = it }, "제목·메모 검색", Modifier.fillMaxWidth().padding(16.dp, 8.dp))
+            if (query.isNotBlank()) {
+                PillButton(if (includeCompleted) "완료 포함 ✓" else "완료 포함", c.surface, c.text, Modifier.padding(horizontal = 16.dp)) { includeCompleted = !includeCompleted }
+            }
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 96.dp),
@@ -130,7 +141,7 @@ fun TasksScreen(
             ) {
                 if (list.isEmpty()) item {
                     Text(
-                        when (filter) { 0 -> "오늘 할 일이 없어요"; 1 -> "예정된 일이 없어요"; 2 -> "할 일이 없어요"; else -> "완료한 일이 없어요" },
+                        if (query.isNotBlank()) "검색 결과가 없어요" else when (filter) { 0 -> "오늘 할 일이 없어요"; 1 -> "예정된 일이 없어요"; 2 -> "할 일이 없어요"; else -> "완료한 일이 없어요" },
                         style = HaruType.headline, color = c.textSub, modifier = Modifier.padding(top = 32.dp),
                     )
                 }
@@ -203,9 +214,25 @@ fun TrashScreen(
 ) {
     val c = LocalHaru.current
     val list = data.trashedTasks()
+    var deleteId by remember { mutableStateOf<String?>(null) }
+    var confirmEmpty by remember { mutableStateOf(false) }
+    if (deleteId != null || confirmEmpty) {
+        AlertDialog(
+            onDismissRequest = { deleteId = null; confirmEmpty = false },
+            title = { Text(if (confirmEmpty) "휴지통을 비울까요?" else "영구 삭제할까요?") },
+            text = { Text("삭제한 할 일은 복구할 수 없어요.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (confirmEmpty) onEmpty() else deleteId?.let(onDelete)
+                    deleteId = null; confirmEmpty = false
+                }) { Text("영구 삭제") }
+            },
+            dismissButton = { TextButton(onClick = { deleteId = null; confirmEmpty = false }) { Text("취소") } },
+        )
+    }
     Column(Modifier.fillMaxSize().background(c.bg)) {
         TopBar("휴지통", onBack) {
-            if (list.isNotEmpty()) PillButton("비우기", c.errorBg, c.errorText, onClick = onEmpty)
+            if (list.isNotEmpty()) PillButton("비우기", c.errorBg, c.errorText, onClick = { confirmEmpty = true })
         }
         LazyColumn(
             Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
@@ -218,7 +245,7 @@ fun TrashScreen(
                         Text(t.title, style = HaruType.body, color = c.text, maxLines = 2)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                             PillButton("복구", HabitPalettes[3].fill, Color.White, Modifier.weight(1f)) { onRestore(t.id) }
-                            PillButton("영구 삭제", c.errorBg, c.errorText, Modifier.weight(1f)) { onDelete(t.id) }
+                            PillButton("영구 삭제", c.errorBg, c.errorText, Modifier.weight(1f)) { deleteId = t.id }
                         }
                     }
                 }
@@ -233,8 +260,8 @@ fun CalendarScreen(
     onAddOn: (LocalDate) -> Unit, onOpen: (String) -> Unit, onToggle: (String, Boolean) -> Unit,
 ) {
     val c = LocalHaru.current
-    var month by remember { mutableStateOf(YearMonth.from(today)) }
-    var selected by remember { mutableStateOf(today) }
+    var month by rememberSaveable(stateSaver = Saver<YearMonth, String>(save = { it.toString() }, restore = { YearMonth.parse(it) })) { mutableStateOf(YearMonth.from(today)) }
+    var selected by rememberSaveable(stateSaver = Saver<LocalDate, String>(save = { it.toString() }, restore = { LocalDate.parse(it) })) { mutableStateOf(today) }
     val counts = data.tasks.filter { it.deletedAt == null && it.dueDate != null }.groupingBy { it.dueDate!! }.eachCount()
     val day = data.tasksOn(selected)
 
