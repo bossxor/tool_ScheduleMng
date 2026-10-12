@@ -60,7 +60,7 @@ class HabitActions(
 )
 
 @Composable
-fun HabitsScreen(data: AppData, today: LocalDate, actions: HabitActions, onAdd: () -> Unit) {
+fun HabitsScreen(data: AppData, today: LocalDate, actions: HabitActions, onAdd: () -> Unit, onOpen: (String) -> Unit) {
     val c = LocalHaru.current
     val habits = data.habits.filter { it.archivedAt == null }.sortedBy { it.sortOrder }
     val states = habits.associate { it.id to it.dayState(today) }
@@ -95,9 +95,9 @@ fun HabitsScreen(data: AppData, today: LocalDate, actions: HabitActions, onAdd: 
                     }
                 }
             }
-            section("오늘 할 습관", daily) { HabitCard(it, today, state(it), actions) { dialogHabit = it } }
-            section("이번 주 목표", weekly) { HabitCard(it, today, state(it), actions) { dialogHabit = it } }
-            section("끝낸 습관", finished) { HabitCard(it, today, state(it), actions) { dialogHabit = it } }
+            section("오늘 할 습관", daily) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }) { dialogHabit = it } }
+            section("이번 주 목표", weekly) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }) { dialogHabit = it } }
+            section("끝낸 습관", finished) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }) { dialogHabit = it } }
             if (rest.isNotEmpty()) {
                 item {
                     Text(
@@ -106,7 +106,7 @@ fun HabitsScreen(data: AppData, today: LocalDate, actions: HabitActions, onAdd: 
                         modifier = Modifier.clickable { restOpen = !restOpen }.padding(vertical = 12.dp),
                     )
                 }
-                if (restOpen) items(rest, key = { it.id }) { HabitCard(it, today, DayState.REST, actions) {} }
+                if (restOpen) items(rest, key = { it.id }) { HabitCard(it, today, DayState.REST, actions, { onOpen(it.id) }) {} }
             }
         }
         if (habits.isNotEmpty()) {
@@ -208,7 +208,7 @@ private fun WeekStrip(habits: List<Habit>, today: LocalDate) {
 }
 
 @Composable
-private fun HabitCard(h: Habit, today: LocalDate, state: DayState, actions: HabitActions, onInput: () -> Unit) {
+private fun HabitCard(h: Habit, today: LocalDate, state: DayState, actions: HabitActions, onOpen: () -> Unit, onInput: () -> Unit) {
     val c = LocalHaru.current
     val p = palette(h.colorIndex)
     val goal = h.goalFor(today)
@@ -224,7 +224,7 @@ private fun HabitCard(h: Habit, today: LocalDate, state: DayState, actions: Habi
     val shadow = if (c.dark) p.darkTint else c.outline
     var menu by remember { mutableStateOf(false) }
 
-    PopCard(Modifier.fillMaxWidth(), fill = fill, shadow = shadow) {
+    PopCard(Modifier.fillMaxWidth(), fill = fill, shadow = shadow, onClick = onOpen) {
         Row(
             Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,

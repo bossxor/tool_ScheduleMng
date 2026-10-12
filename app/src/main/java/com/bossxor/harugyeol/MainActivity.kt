@@ -27,6 +27,8 @@ import com.bossxor.harugyeol.habit.addHabit
 import com.bossxor.harugyeol.habit.setSkipped
 import com.bossxor.harugyeol.habit.setTotal
 import com.bossxor.harugyeol.ui.AddHabitScreen
+import com.bossxor.harugyeol.ui.DetailActions
+import com.bossxor.harugyeol.ui.HabitDetailScreen
 import com.bossxor.harugyeol.ui.HabitActions
 import com.bossxor.harugyeol.ui.HabitsScreen
 import com.bossxor.harugyeol.ui.HaruTheme
@@ -51,6 +53,7 @@ class MainActivity : ComponentActivity() {
                 val data by store.state.collectAsState()
                 val scope = rememberCoroutineScope()
                 var adding by remember { mutableStateOf(false) }
+                var openId by remember { mutableStateOf<String?>(null) }
 
                 // 저장소 변경은 입력 검증 실패를 안내하고 상태는 바꾸지 않는다.
                 fun change(f: (AppData) -> AppData) {
@@ -69,6 +72,11 @@ class MainActivity : ComponentActivity() {
                     addAmount = { id, d -> change { it.addAmount(id, today.value, d, today.value, System.currentTimeMillis()) } },
                     setTotal = { id, a -> change { it.setTotal(id, today.value, a, today.value, System.currentTimeMillis()) } },
                     setSkipped = { id, s -> change { it.setSkipped(id, today.value, s, today.value, System.currentTimeMillis()) } },
+                )
+
+                val detailActions = DetailActions(
+                    setTotalAt = { id, date, a -> change { it.setTotal(id, date, a, today.value, System.currentTimeMillis()) } },
+                    setSkippedAt = { id, date, s -> change { it.setSkipped(id, date, s, today.value, System.currentTimeMillis()) } },
                 )
 
                 Box(
@@ -104,7 +112,13 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     } else {
-                        HabitsScreen(data, today.value, actions, onAdd = { adding = true })
+                        val open = data.habits.firstOrNull { it.id == openId }
+                        if (open != null) {
+                            BackHandler { openId = null }
+                            HabitDetailScreen(open, today.value, detailActions, onBack = { openId = null })
+                        } else {
+                            HabitsScreen(data, today.value, actions, onAdd = { adding = true }, onOpen = { openId = it })
+                        }
                     }
                 }
             }

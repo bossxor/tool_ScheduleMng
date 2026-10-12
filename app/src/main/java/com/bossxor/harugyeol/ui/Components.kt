@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -54,6 +55,7 @@ fun PopCard(
         Box(Modifier.matchParentSize().offset(3.dp, 3.dp).background(shadow, shape))
         Box(
             Modifier
+                .fillMaxWidth()
                 .clip(shape)
                 .background(fill)
                 .border(2.dp, c.outline, shape)
