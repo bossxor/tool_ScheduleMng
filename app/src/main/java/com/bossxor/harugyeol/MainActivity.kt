@@ -66,6 +66,9 @@ import com.bossxor.harugyeol.habit.unarchiveHabit
 import com.bossxor.harugyeol.reminders.Notifier
 import com.bossxor.harugyeol.reminders.ReminderScheduler
 import com.bossxor.harugyeol.reminders.SummaryNotice
+import com.bossxor.harugyeol.task.Task
+import com.bossxor.harugyeol.task.saveTask
+import com.bossxor.harugyeol.task.undoTaskCompletion
 import com.bossxor.harugyeol.task.addTask
 import com.bossxor.harugyeol.task.deleteTask
 import com.bossxor.harugyeol.task.editTask
@@ -121,6 +124,7 @@ class MainActivity : ComponentActivity() {
     private val today = mutableStateOf(LocalDate.now())
     private val notificationsAllowed = mutableStateOf(true)
     private val pendingRestore = mutableStateOf<AppData?>(null)
+    private val taskToOpen = mutableStateOf<String?>(null)
     private val updateStatus = mutableStateOf("")
     private val banner = mutableStateOf("")
     private lateinit var store: AppStore
@@ -220,6 +224,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        taskToOpen.value = intent.getStringExtra("taskId")
         enableEdgeToEdge()
         store = try {
             (application as HarugyeolApp).store
@@ -236,6 +241,26 @@ class MainActivity : ComponentActivity() {
                 val data by store.state.collectAsState()
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Habits) }
+                var lastCompletion by remember { mutableStateOf<Pair<Task, Task>?>(null) }
+                LaunchedEffect(taskToOpen.value) {
+                    taskToOpen.value?.let { screen = Screen.TaskForm(it, null); taskToOpen.value = null }
+                }
+                fun toggleTask(id: String, done: Boolean) {
+                    val expectedDate = data.tasks.firstOrNull { it.id == id }?.dueDate
+                    scope.launch {
+                        try {
+                            var undo: Pair<Task, Task>? = null
+                            store.update { current ->
+                                val before = current.tasks.firstOrNull { it.id == id }
+                                val next = current.setTaskDone(id, done, System.currentTimeMillis(), expectedDate, today.value)
+                                val after = next.tasks.firstOrNull { it.id == id }
+                                if (done && before != null && after != null && before != after) undo = before to after
+                                next
+                            }
+                            lastCompletion = undo
+                        } catch (e: Exception) { toast(e.message ?: "저장하지 못했어요") }
+                    }
+                }
 
                 // 저장소 변경은 입력 검증 실패를 안내하고 상태는 바꾸지 않는다.
                 fun change(f: (AppData) -> AppData) {
@@ -252,7 +277,7 @@ class MainActivity : ComponentActivity() {
                 fun nowMs() = System.currentTimeMillis()
 
                 LaunchedEffect(Unit) { change { it.recoverTimer(bootCount()) } }
-                LaunchedEffect(data) { ReminderScheduler.rescheduleAll(this@MainActivity, data) }
+
 
                 val actions = HabitActions(
                     addAmount = { id, d -> change { it.addAmount(id, today.value, d, today.value, nowMs()) } },
@@ -273,6 +298,12 @@ class MainActivity : ComponentActivity() {
                     checkpoint = { change { it.checkpointTimer(SystemClock.elapsedRealtime(), bootCount()) } },
                 )
                 val settingsActions = SettingsActions(
+                    addWidget = {
+                        val manager = android.appwidget.AppWidgetManager.getInstance(this@MainActivity)
+                        if (manager.isRequestPinAppWidgetSupported) manager.requestPinAppWidget(android.content.ComponentName(this@MainActivity, com.bossxor.harugyeol.widget.TodayWidget::class.java), null, null)
+                        else toast("홈 화면을 길게 눌러 하루결 위젯을 추가해 주세요")
+                    },
+                    setAllDayTime = { time -> change { it.copy(settings = it.settings.copy(allDayReminderTime = time)) } },
                     setSummary = { enabled, time ->
                         change { it.copy(settings = it.settings.copy(dailySummary = DailySummary(enabled, time))) }
                     },
@@ -306,6 +337,12 @@ class MainActivity : ComponentActivity() {
                 Column(
                     Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.systemBars),
                 ) {
+                    lastCompletion?.let { (before, after) ->
+                        PillButton("완료 되돌리기", c.surface, c.text, Modifier.padding(8.dp)) {
+                            change { it.undoTaskCompletion(before, after) }
+                            lastCompletion = null
+                        }
+                    }
                     Box(Modifier.weight(1f)) {
                         when (val s = screen) {
                             Screen.Habits -> HabitsScreen(
@@ -321,7 +358,7 @@ class MainActivity : ComponentActivity() {
                                 data, today.value,
                                 onAdd = { screen = Screen.TaskForm(null, null) },
                                 onOpen = { screen = Screen.TaskForm(it, null) },
-                                onToggle = { id, done -> change { it.setTaskDone(id, done, nowMs()) } },
+                                onToggle = { id, done -> toggleTask(id, done) },
                                 onTrash = { screen = Screen.Trash },
                             ) }
 
@@ -329,7 +366,7 @@ class MainActivity : ComponentActivity() {
                                 data, today.value,
                                 onAddOn = { screen = Screen.TaskForm(null, it) },
                                 onOpen = { screen = Screen.TaskForm(it, null) },
-                                onToggle = { id, done -> change { it.setTaskDone(id, done, nowMs()) } },
+                                onToggle = { id, done -> toggleTask(id, done) },
                             ) }
 
                             Screen.Settings -> SettingsScreen(
@@ -417,20 +454,19 @@ class MainActivity : ComponentActivity() {
                                     initial = t, defaultDate = s.date, today = today.value,
                                     onClose = { screen = Screen.Tasks },
                                     onTrash = { t?.let { x -> change { it.trashTask(x.id, nowMs()) } }; screen = Screen.Tasks },
-                                    onSave = { title, note, priority, due ->
+                                    onSave = { draft ->
                                         try {
                                             val now = nowMs()
-                                            if (t == null) data.addTask(title, note, priority, due, now)
-                                            else data.editTask(t.id, title, note, priority, due, now)
-                                            change {
-                                                if (t == null) it.addTask(title, note, priority, due, now)
-                                                else it.editTask(t.id, title, note, priority, due, now)
+                                            data.saveTask(t?.id, draft, now)
+                                            scope.launch {
+                                                try {
+                                                    store.update { it.saveTask(t?.id, draft, now) }
+                                                    if (draft.reminders.isNotEmpty() && !notificationsAllowed.value) requestNotifications()
+                                                    screen = Screen.Tasks
+                                                } catch (e: Exception) { toast(e.message ?: "저장하지 못했어요") }
                                             }
-                                            screen = Screen.Tasks
                                             null
-                                        } catch (e: HabitInputException) {
-                                            e.message
-                                        }
+                                        } catch (e: HabitInputException) { e.message }
                                     },
                                 )
                             }
@@ -478,6 +514,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        taskToOpen.value = intent.getStringExtra("taskId")
     }
 
     override fun onResume() {

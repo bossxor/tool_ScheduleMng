@@ -26,6 +26,8 @@ import java.util.Date
 import java.util.Locale
 
 class SettingsActions(
+    val addWidget: () -> Unit,
+    val setAllDayTime: (String) -> Unit,
     val setSummary: (enabled: Boolean, time: String) -> Unit,
     val requestNotifications: () -> Unit,
     val testNotification: () -> Unit,
@@ -59,6 +61,13 @@ fun SettingsScreen(
             }
         }
 
+        SettingCard("종일 작업 알림") {
+            PillButton("시각 ${data.settings.allDayReminderTime}", c.surface, c.text) {
+                val value = java.time.LocalTime.parse(data.settings.allDayReminderTime)
+                TimePickerDialog(ctx, { _, h, m -> actions.setAllDayTime(java.lang.String.format(java.util.Locale.ROOT, "%02d:%02d", h, m)) }, value.hour, value.minute, true).show()
+            }
+        }
+
         SettingCard("하루 요약") {
             Text(
                 if (summary.enabled) "매일 ${summary.time}에 오늘 달성한 습관과 남은 습관을 알려 드려요."
@@ -83,6 +92,11 @@ fun SettingsScreen(
                     }, h, m, true).show()
                 }
             }
+        }
+
+        SettingCard("위젯·잠금화면") {
+            Text("위젯에는 오늘 요약의 개수만 표시해요. 잠금화면 위젯 추가는 기기의 지원 여부에 따라 달라요. 알림의 완료·미루기는 잠금 해제 후 실행돼요.", style = HaruType.bodyS, color = c.textSub)
+            PillButton("홈 화면 위젯 추가", c.surface, c.text, onClick = actions.addWidget)
         }
 
         SettingCard("데이터") {

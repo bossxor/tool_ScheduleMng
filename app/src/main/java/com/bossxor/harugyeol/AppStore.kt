@@ -20,7 +20,7 @@ const val SCHEMA_VERSION = 1
 data class DailySummary(val enabled: Boolean = false, val time: String = "20:30")
 
 @Serializable
-data class Settings(val theme: String = "SYSTEM", val dailySummary: DailySummary = DailySummary())
+data class Settings(val theme: String = "SYSTEM", val dailySummary: DailySummary = DailySummary(), val allDayReminderTime: String = "09:00")
 
 // 습관·작업 등은 해당 단계에서 기본값과 함께 추가한다. 앱보다 높은 schemaVersion은 거부한다.
 @Serializable

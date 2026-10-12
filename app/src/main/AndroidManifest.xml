@@ -25,7 +25,17 @@
             </intent-filter>
         </activity>
 
+        <receiver android:name=".widget.TodayWidget" android:exported="true" android:label="하루결 오늘 요약">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today_info" />
+        </receiver>
         <receiver android:name=".reminders.AlarmReceiver" android:exported="false" />
+        <receiver android:name=".reminders.TaskActionReceiver" android:exported="false" />
         <receiver android:name=".reminders.ActionReceiver" android:exported="false" />
         <receiver android:name=".update.InstallResultReceiver" android:exported="false" />
         <receiver android:name=".reminders.BootReceiver" android:exported="true">

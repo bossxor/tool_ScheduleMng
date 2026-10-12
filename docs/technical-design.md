@@ -342,3 +342,12 @@ updatedAt만으로 충돌을 해결한다고 가정하지 않는다. 단일 JSON
 - 화면별 구성은 [화면 명세](screen-specs.md)가 기준이다.
 
 구체적인 데이터 구조·기본값·기능 단계는 이 프로젝트의 설계 결정이다.
+
+## 2026-10-12 일정·위젯 구현 반영
+
+- 기존 작업 파일을 읽도록 Task에 기본값이 있는 dueTime, recurrence, reminders, occurrences를 추가한다. 기존 평면 dueDate를 유지하며 schedule 래퍼로 옮기지 않는다. 이전 데이터는 반복 없음·알림 없음으로 읽는다.
+- RepeatRule(unit, interval, anchorDate, weekdays?, untilDate?)와 회차 예정 날짜·시각·완료 시각을 저장한다. 과거 회차는 반복 해제 후에도 보존한다.
+- 일정·알림을 한 번에 저장하고 미래 회차는 조회 기간에만 계산한다. 월말·윤년은 원래 anchorDate를 보존한다.
+- 완료 요청에 현재 회차 날짜를 명시한다. 직후 되돌리기는 Task가 완료 직후와 동일한 경우에만 허용한다. 늦은 완료는 완료일 이후 첫 회차로 이동한다.
+- 작업 알림 수신은 키·예정 시각·현재 회차를 재검사한다. 미루기는 파일에 보존한다. 앱 프로세스의 StateFlow 관찰자가 변경 후 예약·위젯을 갱신한다.
+- 기본 위젯과 잠금화면은 [전용 설계](widgets-lockscreen-design.md)를 따른다. AppWidgetProvider·RemoteViews로 이름 없는 개수만 표시하고 알림 액션은 인증 후 실행한다.

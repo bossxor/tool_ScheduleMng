@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bossxor.harugyeol.AppData
 import com.bossxor.harugyeol.task.searchTasks
+import com.bossxor.harugyeol.task.scheduledDates
 import com.bossxor.harugyeol.task.Task
 import com.bossxor.harugyeol.task.allOpenTasks
 import com.bossxor.harugyeol.task.doneTasks
@@ -60,7 +61,7 @@ private val priorityMark = listOf("", "!", "!!", "!!!")
 private val priorityName = listOf("없음", "낮음", "중간", "높음")
 
 @Composable
-private fun TaskRow(t: Task, today: LocalDate, onToggle: (Boolean) -> Unit, onOpen: () -> Unit) {
+private fun TaskRow(t: Task, today: LocalDate, onToggle: (Boolean) -> Unit, onOpen: () -> Unit, canToggle: Boolean = true) {
     val c = LocalHaru.current
     val done = t.completedAt != null
     PopCard(Modifier.fillMaxWidth(), fill = if (done) c.stripeBg else c.surface, onClick = onOpen) {
@@ -70,7 +71,7 @@ private fun TaskRow(t: Task, today: LocalDate, onToggle: (Boolean) -> Unit, onOp
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Box(
-                Modifier.size(48.dp).clickable(onClickLabel = if (done) "완료 취소" else "완료") { onToggle(!done) },
+                Modifier.size(48.dp).clickable(enabled = canToggle, onClickLabel = if (done) "완료 취소" else "완료") { onToggle(!done) },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -88,7 +89,8 @@ private fun TaskRow(t: Task, today: LocalDate, onToggle: (Boolean) -> Unit, onOp
                     textDecoration = if (done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
                 )
                 val sub = buildList {
-                    t.dueDate?.let { add(dueLabel(it, today)) }
+                    t.dueDate?.let { add(dueLabel(it, today) + (t.dueTime?.let { time -> " $time" } ?: "")) }
+                    if (t.recurrence != null) add("반복")
                     if (t.priority > 0) add("우선순위 ${priorityName[t.priority]}")
                 }
                 if (sub.isNotEmpty()) {
@@ -145,8 +147,8 @@ fun TasksScreen(
                         style = HaruType.headline, color = c.textSub, modifier = Modifier.padding(top = 32.dp),
                     )
                 }
-                items(list, key = { it.id }) { t ->
-                    TaskRow(t, today, { onToggle(t.id, it) }, { onOpen(t.id) })
+                items(list, key = { "${it.id}:${it.dueDate}:${it.completedAt}" }) { t ->
+                    TaskRow(t, today, { onToggle(t.id, it) }, { onOpen(t.id) }, canToggle = t.recurrence == null || (t.completedAt == null && data.tasks.firstOrNull { it.id == t.id }?.dueDate == t.dueDate))
                 }
             }
         }
@@ -156,55 +158,6 @@ fun TasksScreen(
                 .clickable(onClickLabel = "할 일 추가", onClick = onAdd),
             contentAlignment = Alignment.Center,
         ) { Text("＋", style = HaruType.title, color = Color.White) }
-    }
-}
-
-/** 빠른 추가와 편집을 같은 화면으로 쓴다 */
-@Composable
-fun TaskFormScreen(
-    initial: Task?, defaultDate: LocalDate?, today: LocalDate,
-    onSave: (title: String, note: String, priority: Int, due: LocalDate?) -> String?,
-    onTrash: () -> Unit, onClose: () -> Unit,
-) {
-    val c = LocalHaru.current
-    val ctx = LocalContext.current
-    var title by remember { mutableStateOf(initial?.title.orEmpty()) }
-    var note by remember { mutableStateOf(initial?.note.orEmpty()) }
-    var priority by remember { mutableIntStateOf(initial?.priority ?: 0) }
-    var due by remember { mutableStateOf(initial?.dueDate ?: defaultDate) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    Column(Modifier.fillMaxSize().background(c.bg)) {
-        TopBar(if (initial == null) "할 일 추가" else "할 일 편집", onClose) {
-            PillButton("저장", HabitPalettes[1].fill, Color.White) { error = onSave(title, note, priority, due) }
-        }
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("제목", style = HaruType.headline, color = c.text)
-            HaruTextField(title, { title = it }, "예: 병원 예약하기", Modifier.fillMaxWidth())
-            Text("날짜", style = HaruType.headline, color = c.text)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PillButton("오늘", if (due == today) HabitPalettes[1].fill else c.surface, if (due == today) Color.White else c.text) { due = today }
-                PillButton("내일", if (due == today.plusDays(1)) HabitPalettes[1].fill else c.surface, if (due == today.plusDays(1)) Color.White else c.text) { due = today.plusDays(1) }
-                PillButton("없음", if (due == null) HabitPalettes[1].fill else c.surface, if (due == null) Color.White else c.text) { due = null }
-            }
-            PillButton(due?.let { "${it.year}년 ${it.monthValue}월 ${it.dayOfMonth}일" } ?: "날짜 선택", c.surface, c.text) {
-                val d = due ?: today
-                DatePickerDialog(ctx, { _, y, m, day -> due = LocalDate.of(y, m + 1, day) }, d.year, d.monthValue - 1, d.dayOfMonth).show()
-            }
-            Text("우선순위", style = HaruType.headline, color = c.text)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                priorityName.forEachIndexed { i, n ->
-                    PillButton(n, if (priority == i) HabitPalettes[1].fill else c.surface, if (priority == i) Color.White else c.text) { priority = i }
-                }
-            }
-            Text("메모", style = HaruType.headline, color = c.text)
-            HaruTextField(note, { note = it }, "메모를 입력해요", Modifier.fillMaxWidth())
-            error?.let { Text(it, style = HaruType.body, color = c.errorText) }
-            if (initial != null) PillButton("휴지통으로 이동", c.errorBg, c.errorText, Modifier.fillMaxWidth(), onClick = onTrash)
-        }
     }
 }
 
@@ -239,7 +192,7 @@ fun TrashScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (list.isEmpty()) item { Text("휴지통이 비어 있어요", style = HaruType.headline, color = c.textSub) }
-            items(list, key = { it.id }) { t ->
+            items(list, key = { "${it.id}:${it.dueDate}:${it.completedAt}" }) { t ->
                 PopCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(t.title, style = HaruType.body, color = c.text, maxLines = 2)
@@ -262,7 +215,10 @@ fun CalendarScreen(
     val c = LocalHaru.current
     var month by rememberSaveable(stateSaver = Saver<YearMonth, String>(save = { it.toString() }, restore = { YearMonth.parse(it) })) { mutableStateOf(YearMonth.from(today)) }
     var selected by rememberSaveable(stateSaver = Saver<LocalDate, String>(save = { it.toString() }, restore = { LocalDate.parse(it) })) { mutableStateOf(today) }
-    val counts = data.tasks.filter { it.deletedAt == null && it.dueDate != null }.groupingBy { it.dueDate!! }.eachCount()
+    val counts = data.tasks.filter { it.deletedAt == null }.flatMap { task ->
+        if (task.recurrence == null) listOfNotNull(task.dueDate)
+        else task.scheduledDates(month.atDay(1), month.atEndOfMonth()) + task.occurrences.map { it.scheduledDate }
+    }.groupingBy { it }.eachCount()
     val day = data.tasksOn(selected)
 
     Column(Modifier.fillMaxSize().background(c.bg).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -320,6 +276,6 @@ fun CalendarScreen(
             PillButton("추가", HabitPalettes[1].fill, Color.White) { onAddOn(selected) }
         }
         if (day.isEmpty()) Text("이 날의 할 일이 없어요", style = HaruType.body, color = c.textSub)
-        day.forEach { t -> TaskRow(t, today, { onToggle(t.id, it) }, { onOpen(t.id) }) }
+        day.forEach { t -> TaskRow(t, today, { onToggle(t.id, it) }, { onOpen(t.id) }, canToggle = t.recurrence == null || (t.completedAt == null && data.tasks.firstOrNull { it.id == t.id }?.dueDate == t.dueDate)) }
     }
 }

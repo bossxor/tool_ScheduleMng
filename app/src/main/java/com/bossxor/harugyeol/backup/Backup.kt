@@ -39,6 +39,7 @@ object Backup {
         if (d.habits.map { it.id }.toSet().size != d.habits.size) bad("습관 ID가 겹쳐요")
         if (d.tasks.map { it.id }.toSet().size != d.tasks.size) bad("할 일 ID가 겹쳐요")
         if (!TIME.matches(d.settings.dailySummary.time)) bad("하루 요약 시각이 올바르지 않아요")
+        if (!TIME.matches(d.settings.allDayReminderTime)) bad("종일 알림 시각이 올바르지 않아요")
         for (h in d.habits) {
             if (h.id.isBlank() || h.note.length > 20_000) bad("습관 정보가 올바르지 않아요")
             when (h.measureType) {
@@ -74,6 +75,9 @@ object Backup {
             if ((t.state == TimerState.RUNNING) != (t.segmentStartedElapsedMs != null)) bad("타이머 상태가 올바르지 않아요")
         }
         for (t in d.tasks) {
+            try { com.bossxor.harugyeol.task.validateTaskSchedule(t.dueDate, t.dueTime, t.recurrence, t.reminders) }
+            catch (e: HabitInputException) { bad(e.message ?: "작업 일정이 올바르지 않아요") }
+            if (t.occurrences.map { it.scheduledDate }.distinct().size != t.occurrences.size || t.occurrences.any { it.scheduledTime != null && !TIME.matches(it.scheduledTime) }) bad("반복 회차가 올바르지 않아요")
             if (t.id.isBlank() || t.note.length > 20_000) bad("할 일 정보가 올바르지 않아요")
             if (t.title.isBlank() || t.title.length > 500) bad("할 일 제목이 올바르지 않아요")
             if (t.priority !in 0..3) bad("우선순위가 올바르지 않아요")

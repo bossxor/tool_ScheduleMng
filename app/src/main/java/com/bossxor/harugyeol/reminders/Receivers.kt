@@ -13,6 +13,7 @@ import java.time.LocalDate
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val key = intent.getStringExtra("key") ?: return
+        if (key.startsWith("task:")) { receiveTaskAlarm(this, ctx, intent); return }
         val store = try { (ctx.applicationContext as HarugyeolApp).store } catch (_: StoreException) { return }
         val data = store.state.value
         val today = LocalDate.now()
