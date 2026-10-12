@@ -95,4 +95,22 @@ class RecoveryMigrationTest {
         assertArrayEquals(original, file().readBytes())
         assertEquals(listOf("data.json"), temporary.root.listFiles()!!.map { it.name })
     }
+    @Test fun repeatedSnapshotSwapsReuseExactOriginalWithoutDeletingDistinctData() = runBlocking {
+        val store = AppStore.open(file())
+        val original = AppData()
+        val other = original.copy(settings = Settings(theme = "DARK"))
+        store.replaceAll(other)
+        repeat(6) { assertTrue(store.restoreSnapshot()) }
+        val preserved = temporary.root.listFiles()!!.filter { it.name.startsWith("snapshot-original-") }
+        assertEquals(2, preserved.size)
+        val texts = preserved.map { it.readText() }.toSet()
+        assertEquals(setOf(Backup.encode(original), Backup.encode(other)), texts)
+    }
+    @Test fun identicalCorruptOriginalIsPreservedOnlyOnce() {
+        val bytes = byteArrayOf(0, 9, -1, 10)
+        repeat(3) { file().writeBytes(bytes); AppStore.recover(file(), AppData()) }
+        val preserved = temporary.root.listFiles()!!.filter { it.name.startsWith("data-original-") }
+        assertEquals(1, preserved.size)
+        assertArrayEquals(bytes, preserved.single().readBytes())
+    }
 }

@@ -104,3 +104,16 @@ fun Habit.totalRate(today: LocalDate) = rate(startDate, today, today)
 
 fun Habit.skippedCount(from: LocalDate, to: LocalDate) =
     logs.count { it.skipped && !it.date.isBefore(from) && !it.date.isAfter(to) }
+
+/** 대상 날짜의 목표 진행 평균. 휴식/건너뜀 제외, 달성은 100%. */
+fun dayProgress(habits: List<Habit>, date: LocalDate): Float {
+    val progress = habits.mapNotNull { h ->
+        val state = h.dayState(date)
+        if (!state.counts) null else if (state.isDone) 1f
+        else {
+            val target = h.goalFor(date)?.targetAmount ?: 0
+            if (target <= 0) 0f else ((h.logOf(date)?.amount ?: 0).toDouble() / target).coerceIn(0.0, 1.0).toFloat()
+        }
+    }
+    return if (progress.isEmpty()) 0f else progress.average().toFloat()
+}

@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.bossxor.harugyeol.AppData
+import com.bossxor.harugyeol.habit.dayProgress
 import com.bossxor.harugyeol.habit.DayState
 import com.bossxor.harugyeol.habit.GoalMode
 import com.bossxor.harugyeol.habit.Habit
@@ -251,6 +252,7 @@ private fun WeekStrip(habits: List<Habit>, today: LocalDate) {
             val allDone = sts.isNotEmpty() && sts.all { it.isDone }
             val someDone = sts.any { it.isDone || it == DayState.PARTIAL }
             val future = d.isAfter(today)
+            val progress = if (future) 0f else dayProgress(habits, d)
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("월화수목금토일"[i].toString(), style = HaruType.caption, color = c.textSub)
                 Spacer(Modifier.height(4.dp))
@@ -265,12 +267,12 @@ private fun WeekStrip(habits: List<Habit>, today: LocalDate) {
                         )
                         .semantics {
                             contentDescription = "${d.monthValue}월 ${d.dayOfMonth}일, " +
-                                if (allDone) "모두 달성" else if (sts.isEmpty()) "대상 없음" else "${sts.count { it.isDone }}/${sts.size} 달성"
+                                if (allDone) "모두 달성" else if (sts.isEmpty()) "대상 없음" else "${sts.count { it.isDone }}/${sts.size} 달성, 진행 ${(progress * 100).toInt()}%"
                         },
                     contentAlignment = Alignment.Center,
                 ) {
                     if (someDone && !allDone && !future) androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-                        drawArc(HabitPalettes[3].fill, -90f, 360f * sts.count { it.isDone }.toFloat() / sts.size, false, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+                        drawArc(HabitPalettes[3].fill, -90f, 360f * progress, false, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
                     }
                     Text(
                         d.dayOfMonth.toString(), style = HaruType.number,

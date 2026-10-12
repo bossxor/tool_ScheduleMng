@@ -96,8 +96,7 @@ class AppStore private constructor(private val file: File, initial: AppData, pri
     /** 교체 도중 저장에 실패해도 이전 복원 후보의 원문은 남긴다. */
     private fun preserveSnapshotOriginal() {
         if (!snapshotFile.exists()) return
-        Files.copy(snapshotFile.toPath(),
-            File(file.parentFile, "snapshot-original-${UUID.randomUUID()}.json").toPath())
+        preserveOriginal(snapshotFile, "snapshot-original-")
     }
 
     private fun ensureNoTimer() {
@@ -150,12 +149,21 @@ class AppStore private constructor(private val file: File, initial: AppData, pri
             val restored = normalizeRestored(data)
             Backup.validate(restored)
             if (file.exists()) {
-                Files.copy(file.toPath(), File(file.parentFile, "data-original-${UUID.randomUUID()}.json").toPath())
+                preserveOriginal(file, "data-original-")
             }
             write(file, restored)
             return AppStore(file, restored)
         }
 
+        /** 동일한 원문은 재사용한다. 기존 원본은 삭제하거나 덮어쓰지 않는다. */
+        private fun preserveOriginal(source: File, prefix: String) {
+            val bytes = source.readBytes()
+            val exists = source.parentFile?.listFiles().orEmpty().any { candidate ->
+                candidate.isFile && candidate.name.startsWith(prefix) && candidate.name.endsWith(".json") &&
+                    candidate.length() == bytes.size.toLong() && candidate.readBytes().contentEquals(bytes)
+            }
+            if (!exists) Files.copy(source.toPath(), File(source.parentFile, "$prefix${UUID.randomUUID()}.json").toPath())
+        }
         private fun write(file: File, data: AppData) {
             val tmp = File(file.parentFile, file.name + ".tmp")
             FileOutputStream(tmp).use {
