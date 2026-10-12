@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +35,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.bossxor.harugyeol.AppData
 import com.bossxor.harugyeol.habit.DayState
 import com.bossxor.harugyeol.habit.GoalMode
@@ -57,10 +60,15 @@ class HabitActions(
     val addAmount: (id: String, delta: Long) -> Unit,
     val setTotal: (id: String, amount: Long) -> Unit,
     val setSkipped: (id: String, skipped: Boolean) -> Unit,
+    val move: (id: String, up: Boolean) -> Unit,
 )
 
 @Composable
-fun HabitsScreen(data: AppData, today: LocalDate, actions: HabitActions, onAdd: () -> Unit, onOpen: (String) -> Unit) {
+fun HabitsScreen(
+    data: AppData, today: LocalDate, actions: HabitActions,
+    onAdd: () -> Unit, onOpen: (String) -> Unit, onTimer: (String) -> Unit,
+    onArchive: () -> Unit, onSettings: () -> Unit,
+) {
     val c = LocalHaru.current
     val habits = data.habits.filter { it.archivedAt == null }.sortedBy { it.sortOrder }
     val states = habits.associate { it.id to it.dayState(today) }
@@ -71,45 +79,75 @@ fun HabitsScreen(data: AppData, today: LocalDate, actions: HabitActions, onAdd: 
     val finished = habits.filter { state(it).isDone || state(it) == DayState.SKIPPED }
     val rest = habits.filter { state(it) == DayState.REST }
     var restOpen by remember { mutableStateOf(false) }
+    var reorder by remember { mutableStateOf(false) }
     var dialogHabit by remember { mutableStateOf<Habit?>(null) }
+    val timerHabit = data.timer?.habitId
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp, 16.dp, 16.dp, 96.dp),
+            contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text("하루결", style = HaruType.title, color = c.text)
-            }
-            item { SummaryCard(habits, states, today) }
-            if (habits.isEmpty()) {
-                item {
-                    Column(
-                        Modifier.fillMaxWidth().padding(top = 48.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text("첫 습관을 만들어 볼까요?", style = HaruType.headline, color = c.text)
-                        PillButton("습관 추가", HabitPalettes[1].fill, Color.White, onClick = onAdd)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("하루결", style = HaruType.title, color = c.text, modifier = Modifier.weight(1f))
+                    if (reorder) {
+                        PillButton("완료", HabitPalettes[1].fill, Color.White) { reorder = false }
+                    } else {
+                        TextAction("순서") { reorder = true }
+                        TextAction("보관함", onArchive)
+                        TextAction("설정", onSettings)
                     }
                 }
             }
-            section("오늘 할 습관", daily) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }) { dialogHabit = it } }
-            section("이번 주 목표", weekly) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }) { dialogHabit = it } }
-            section("끝낸 습관", finished) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }) { dialogHabit = it } }
-            if (rest.isNotEmpty()) {
-                item {
-                    Text(
-                        (if (restOpen) "▾ " else "▸ ") + "오늘 쉬는 습관 (${rest.size})",
-                        style = HaruType.headline, color = c.textSub,
-                        modifier = Modifier.clickable { restOpen = !restOpen }.padding(vertical = 12.dp),
-                    )
+            if (data.timer != null && timerHabit != null && !reorder) {
+                val th = habits.firstOrNull { it.id == timerHabit }
+                if (th != null) item {
+                    PopCard(Modifier.fillMaxWidth(), fill = HabitPalettes[2].tint, onClick = { onTimer(th.id) }) {
+                        Text(
+                            "${th.name} 타이머가 켜져 있어요 · 눌러서 열기",
+                            style = HaruType.body, color = HabitPalettes[2].deep, modifier = Modifier.padding(14.dp),
+                        )
+                    }
                 }
-                if (restOpen) items(rest, key = { it.id }) { HabitCard(it, today, DayState.REST, actions, { onOpen(it.id) }) {} }
+            }
+            if (reorder) {
+                items(habits, key = { it.id }) { h ->
+                    ReorderRow(h, first = h.id == habits.first().id, last = h.id == habits.last().id, actions)
+                }
+            } else {
+                item { SummaryCard(habits, states, today) }
+                if (habits.isEmpty()) {
+                    item {
+                        Column(
+                            Modifier.fillMaxWidth().padding(top = 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text("첫 습관을 만들어 볼까요?", style = HaruType.headline, color = c.text)
+                            PillButton("습관 추가", HabitPalettes[1].fill, Color.White, onClick = onAdd)
+                        }
+                    }
+                }
+                section("오늘 할 습관", daily) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }, { onTimer(it.id) }) { dialogHabit = it } }
+                section("이번 주 목표", weekly) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }, { onTimer(it.id) }) { dialogHabit = it } }
+                section("끝낸 습관", finished) { HabitCard(it, today, state(it), actions, { onOpen(it.id) }, { onTimer(it.id) }) { dialogHabit = it } }
+                if (rest.isNotEmpty()) {
+                    item {
+                        Text(
+                            (if (restOpen) "▾ " else "▸ ") + "오늘 쉬는 습관 (${rest.size})",
+                            style = HaruType.headline, color = c.textSub,
+                            modifier = Modifier.clickable { restOpen = !restOpen }.padding(vertical = 12.dp),
+                        )
+                    }
+                    if (restOpen) items(rest, key = { it.id }) {
+                        HabitCard(it, today, DayState.REST, actions, { onOpen(it.id) }, {}) {}
+                    }
+                }
             }
         }
-        if (habits.isNotEmpty()) {
+        if (habits.isNotEmpty() && !reorder) {
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
@@ -131,9 +169,42 @@ fun HabitsScreen(data: AppData, today: LocalDate, actions: HabitActions, onAdd: 
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.section(
-    title: String, list: List<Habit>, card: @Composable (Habit) -> Unit,
-) {
+@Composable
+private fun TextAction(text: String, onClick: () -> Unit) {
+    Box(Modifier.heightIn48().clickable(onClick = onClick).padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+        Text(text, style = HaruType.body, color = LocalHaru.current.textSub)
+    }
+}
+
+private fun Modifier.heightIn48() = this.then(Modifier.height(48.dp))
+
+@Composable
+private fun ReorderRow(h: Habit, first: Boolean, last: Boolean, actions: HabitActions) {
+    val c = LocalHaru.current
+    PopCard(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Sticker(h.name, palette(h.colorIndex), DayState.REST, 0f, 44.dp)
+            Text(h.name, style = HaruType.headline, color = c.text, maxLines = 1, modifier = Modifier.weight(1f))
+            ArrowButton("▲", "${h.name} 위로", enabled = !first) { actions.move(h.id, true) }
+            ArrowButton("▼", "${h.name} 아래로", enabled = !last) { actions.move(h.id, false) }
+        }
+    }
+}
+
+@Composable
+private fun ArrowButton(symbol: String, label: String, enabled: Boolean, onClick: () -> Unit) {
+    val c = LocalHaru.current
+    Box(
+        Modifier.size(48.dp).clickable(enabled = enabled, onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(symbol, style = HaruType.headline, color = if (enabled) c.text else c.stripe) }
+}
+
+private fun LazyListScope.section(title: String, list: List<Habit>, card: @Composable (Habit) -> Unit) {
     if (list.isEmpty()) return
     item(key = "h-$title") { SectionTitle(title) }
     items(list, key = { it.id }) { card(it) }
@@ -174,17 +245,13 @@ private fun WeekStrip(habits: List<Habit>, today: LocalDate) {
             val allDone = sts.isNotEmpty() && sts.all { it.isDone }
             val someDone = sts.any { it.isDone || it == DayState.PARTIAL }
             val future = d.isAfter(today)
-            val bg = when {
-                allDone -> HabitPalettes[3].fill
-                else -> c.surface
-            }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("월화수목금토일"[i].toString(), style = HaruType.caption, color = c.textSub)
                 Spacer(Modifier.height(4.dp))
                 Box(
                     Modifier
                         .size(36.dp)
-                        .background(bg, CircleShape)
+                        .background(if (allDone) HabitPalettes[3].fill else c.surface, CircleShape)
                         .border(
                             if (d == today) 3.dp else if (sts.isEmpty() || future) 1.dp else 2.dp,
                             if (someDone || allDone || d == today) c.outline else c.dashed,
@@ -208,7 +275,10 @@ private fun WeekStrip(habits: List<Habit>, today: LocalDate) {
 }
 
 @Composable
-private fun HabitCard(h: Habit, today: LocalDate, state: DayState, actions: HabitActions, onOpen: () -> Unit, onInput: () -> Unit) {
+private fun HabitCard(
+    h: Habit, today: LocalDate, state: DayState, actions: HabitActions,
+    onOpen: () -> Unit, onTimer: () -> Unit, onInput: () -> Unit,
+) {
     val c = LocalHaru.current
     val p = palette(h.colorIndex)
     val goal = h.goalFor(today)
@@ -241,6 +311,12 @@ private fun HabitCard(h: Habit, today: LocalDate, state: DayState, actions: Habi
                         else h.amountText(amount, target),
                         style = HaruType.number, color = if (state.isDone) c.achievedText else p.accent(c),
                     )
+                    if (goal?.mode == GoalMode.WEEKLY_COUNT) {
+                        Text(
+                            "이번 주 ${h.weekAchievedDays(today)}/${h.weekTarget(today)}일",
+                            style = HaruType.caption, color = c.textSub,
+                        )
+                    }
                 } else {
                     Text(
                         if (state == DayState.SKIPPED) "오늘은 쉬어요" else h.goalLabel() + " · 오늘은 대상이 아니에요",
@@ -249,9 +325,7 @@ private fun HabitCard(h: Habit, today: LocalDate, state: DayState, actions: Habi
                 }
             }
             if (state != DayState.REST) {
-                Box(contentAlignment = Alignment.Center) {
-                    RecordButton(h, state, p, actions, onInput)
-                }
+                RecordButton(h, state, p, actions, onTimer, onInput)
                 Box {
                     Box(
                         Modifier.size(48.dp).clickable(onClickLabel = "더보기") { menu = true },
@@ -270,6 +344,12 @@ private fun HabitCard(h: Habit, today: LocalDate, state: DayState, actions: Habi
                             enabled = state == DayState.SKIPPED || canSkip,
                             onClick = { menu = false; actions.setSkipped(h.id, state != DayState.SKIPPED) },
                         )
+                        if (h.measureType == MeasureType.DURATION) {
+                            DropdownMenuItem(
+                                text = { Text("시간 직접 입력", style = HaruType.body) },
+                                onClick = { menu = false; onInput() },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("기록 초기화", style = HaruType.body) },
                             enabled = amount > 0,
@@ -285,7 +365,7 @@ private fun HabitCard(h: Habit, today: LocalDate, state: DayState, actions: Habi
 }
 
 @Composable
-private fun RecordButton(h: Habit, state: DayState, p: HabitPalette, actions: HabitActions, onInput: () -> Unit) {
+private fun RecordButton(h: Habit, state: DayState, p: HabitPalette, actions: HabitActions, onTimer: () -> Unit, onInput: () -> Unit) {
     val c = LocalHaru.current
     val done = state.isDone
     when (h.measureType) {
@@ -306,7 +386,7 @@ private fun RecordButton(h: Habit, state: DayState, p: HabitPalette, actions: Ha
             onClick = { actions.addAmount(h.id, 100) },
         )
 
-        MeasureType.DURATION -> PillButton("기록", p.fill, p.onFill, onClick = onInput)
+        MeasureType.DURATION -> PillButton("▶ 타이머", p.fill, p.onFill, onLongClick = onInput, onClick = onTimer)
     }
 }
 
@@ -331,7 +411,7 @@ private fun AmountDialog(h: Habit, today: LocalDate, onDismiss: () -> Unit, onSa
     var error by remember { mutableStateOf<String?>(null) }
     val unit = if (h.measureType == MeasureType.DURATION) "분" else h.unit.orEmpty()
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss) {
         PopCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(h.name, style = HaruType.headline, color = c.text)
@@ -353,7 +433,3 @@ private fun AmountDialog(h: Habit, today: LocalDate, onDismiss: () -> Unit, onSa
         }
     }
 }
-
-// 주 목표 표시용 (카드 문구에서 사용 예정)
-@Suppress("unused")
-private fun Habit.weekProgress(date: LocalDate) = "${weekAchievedDays(date)}/${weekTarget(date)}"

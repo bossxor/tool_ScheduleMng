@@ -1,6 +1,7 @@
 package com.bossxor.harugyeol
 
 import com.bossxor.harugyeol.habit.Habit
+import com.bossxor.harugyeol.habit.HabitTimer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -15,7 +16,10 @@ import java.nio.file.StandardCopyOption
 const val SCHEMA_VERSION = 1
 
 @Serializable
-data class Settings(val theme: String = "SYSTEM")
+data class DailySummary(val enabled: Boolean = false, val time: String = "20:30")
+
+@Serializable
+data class Settings(val theme: String = "SYSTEM", val dailySummary: DailySummary = DailySummary())
 
 // 습관·작업 등은 해당 단계에서 기본값과 함께 추가한다. 앱보다 높은 schemaVersion은 거부한다.
 @Serializable
@@ -23,6 +27,7 @@ data class AppData(
     val schemaVersion: Int = SCHEMA_VERSION,
     val settings: Settings = Settings(),
     val habits: List<Habit> = emptyList(),
+    val timer: HabitTimer? = null,
 )
 
 class StoreException(message: String, cause: Throwable? = null) : Exception(message, cause)

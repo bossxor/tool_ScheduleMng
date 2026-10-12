@@ -43,6 +43,7 @@ import com.bossxor.harugyeol.habit.logOf
 import com.bossxor.harugyeol.habit.monthRate
 import com.bossxor.harugyeol.habit.parseMinutes
 import com.bossxor.harugyeol.habit.parseQuantity
+import com.bossxor.harugyeol.habit.pendingGoal
 import com.bossxor.harugyeol.habit.skippedCount
 import com.bossxor.harugyeol.habit.streak
 import com.bossxor.harugyeol.habit.totalRate
@@ -55,26 +56,30 @@ class DetailActions(
 )
 
 @Composable
-fun HabitDetailScreen(habit: Habit, today: LocalDate, actions: DetailActions, onBack: () -> Unit) {
+fun HabitDetailScreen(
+    habit: Habit, today: LocalDate, actions: DetailActions, onBack: () -> Unit,
+    onEdit: () -> Unit, onArchive: () -> Unit, onCancelPending: () -> Unit,
+) {
     val c = LocalHaru.current
     val p = palette(habit.colorIndex)
     var month by remember { mutableStateOf(YearMonth.from(today)) }
     var showMonthRate by remember { mutableStateOf(true) }
     var editing by remember { mutableStateOf<LocalDate?>(null) }
+    var confirmArchive by remember { mutableStateOf(false) }
+    val pending = habit.pendingGoal(today)
 
     val streak = habit.streak(today)
     val rate = if (showMonthRate) habit.monthRate(month, today) else habit.totalRate(today)
     val unit = if (streak.unit == StreakUnit.WEEK) "주" else "일"
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp).heightIn(min = 56.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(48.dp).clickable(onClickLabel = "뒤로", onClick = onBack), contentAlignment = Alignment.Center) {
-                Text("←", style = HaruType.headline, color = c.text)
+        TopBar(habit.name, onBack) {
+            Box(Modifier.heightIn(min = 48.dp).clickable(onClick = onEdit).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                Text("편집", style = HaruType.body, color = c.textSub)
             }
-            Text(habit.name, style = HaruType.title, color = c.text, maxLines = 1, modifier = Modifier.weight(1f))
+            Box(Modifier.heightIn(min = 48.dp).clickable { confirmArchive = true }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                Text("보관", style = HaruType.body, color = c.textSub)
+            }
         }
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -102,6 +107,18 @@ fun HabitDetailScreen(habit: Habit, today: LocalDate, actions: DetailActions, on
             else habit.skippedCount(habit.startDate, today)
             if (skipped > 0) Text("이 기간 건너뛴 날 ${skipped}일", style = HaruType.bodyS, color = c.textSub)
 
+            if (pending != null) {
+                PopCard(Modifier.fillMaxWidth(), fill = c.stripeBg) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "${pending.effectiveFrom.monthValue}월 ${pending.effectiveFrom.dayOfMonth}일부터 " +
+                                habit.amountText(pending.targetAmount, pending.targetAmount).substringAfter('/').ifEmpty { "완료" } + " 목표",
+                            style = HaruType.body, color = c.text, modifier = Modifier.weight(1f),
+                        )
+                        PillButton("예약 취소", c.surface, c.text, onClick = onCancelPending)
+                    }
+                }
+            }
             PopCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MonthHeader(month, habit, today) { month = it }
@@ -109,6 +126,24 @@ fun HabitDetailScreen(habit: Habit, today: LocalDate, actions: DetailActions, on
                 }
             }
             Text("날짜를 누르면 기록을 고치거나 건너뛸 수 있어요", style = HaruType.bodyS, color = c.textSub)
+        }
+    }
+
+    if (confirmArchive) {
+        Dialog(onDismissRequest = { confirmArchive = false }) {
+            PopCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("보관할까요?", style = HaruType.headline, color = c.text)
+                    Text("기록은 그대로 남고 오늘 화면과 알림에서 빠져요. 보관함에서 다시 꺼낼 수 있어요.", style = HaruType.body, color = c.textSub)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        PillButton("취소", c.surface, c.text, Modifier.weight(1f)) { confirmArchive = false }
+                        PillButton("보관", HabitPalettes[1].fill, Color.White, Modifier.weight(1f)) {
+                            confirmArchive = false
+                            onArchive()
+                        }
+                    }
+                }
+            }
         }
     }
 

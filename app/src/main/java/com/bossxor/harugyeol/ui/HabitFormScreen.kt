@@ -1,5 +1,6 @@
 package com.bossxor.harugyeol.ui
 
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,16 +26,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.bossxor.harugyeol.habit.DayState
 import com.bossxor.harugyeol.habit.GoalMode
+import com.bossxor.harugyeol.habit.Habit
 import com.bossxor.harugyeol.habit.MeasureType
+import com.bossxor.harugyeol.habit.formatQuantity
+import com.bossxor.harugyeol.habit.goalFor
 import com.bossxor.harugyeol.habit.parseMinutes
 import com.bossxor.harugyeol.habit.parseQuantity
+import com.bossxor.harugyeol.habit.pendingGoal
+import java.time.LocalDate
 
 class NewHabit(
     val name: String, val colorIndex: Int, val type: MeasureType, val unit: String?,
     val mode: GoalMode, val weekdays: List<Int>?, val targetDays: Int?, val targetAmount: Long,
+    val reminders: List<String>,
 )
 
 private val presets = listOf(
@@ -43,19 +51,39 @@ private val presets = listOf(
     Triple("스트레칭", MeasureType.CHECK, "" to ""),
 )
 
+/** 습관 추가(initial == null)와 편집을 같은 화면으로 쓴다. 편집에서는 유형·단위를 바꿀 수 없다. */
 @Composable
-fun AddHabitScreen(onSave: (NewHabit) -> String?, onClose: () -> Unit) {
+fun HabitFormScreen(
+    initial: Habit?,
+    today: LocalDate,
+    onSave: (NewHabit) -> String?,
+    onCancelPending: () -> Unit,
+    onClose: () -> Unit,
+) {
     val c = LocalHaru.current
-    var name by remember { mutableStateOf("") }
-    var color by remember { mutableIntStateOf(1) }
-    var type by remember { mutableStateOf(MeasureType.CHECK) }
-    var unit by remember { mutableStateOf("잔") }
-    var target by remember { mutableStateOf("") }
-    var mode by remember { mutableStateOf(GoalMode.DAILY) }
-    var weekdays by remember { mutableStateOf(setOf(1, 2, 3, 4, 5)) }
-    var targetDays by remember { mutableIntStateOf(3) }
+    val ctx = LocalContext.current
+    val editing = initial != null
+    val g = initial?.goalFor(today)
+    var name by remember { mutableStateOf(initial?.name.orEmpty()) }
+    var color by remember { mutableIntStateOf(initial?.colorIndex ?: 1) }
+    var type by remember { mutableStateOf(initial?.measureType ?: MeasureType.CHECK) }
+    var unit by remember { mutableStateOf(initial?.unit ?: "잔") }
+    var target by remember {
+        mutableStateOf(
+            when (initial?.measureType) {
+                MeasureType.QUANTITY -> formatQuantity(g?.targetAmount ?: 0)
+                MeasureType.DURATION -> ((g?.targetAmount ?: 0) / 60).toString()
+                else -> ""
+            }
+        )
+    }
+    var mode by remember { mutableStateOf(g?.mode ?: GoalMode.DAILY) }
+    var weekdays by remember { mutableStateOf(g?.weekdays?.toSet() ?: setOf(1, 2, 3, 4, 5)) }
+    var targetDays by remember { mutableIntStateOf(g?.targetDays ?: 3) }
+    var reminders by remember { mutableStateOf(initial?.reminders ?: emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     val p = palette(color)
+    val pending = initial?.pendingGoal(today)
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
         Row(
@@ -65,7 +93,7 @@ fun AddHabitScreen(onSave: (NewHabit) -> String?, onClose: () -> Unit) {
             Box(Modifier.size(48.dp).clickable(onClickLabel = "닫기", onClick = onClose), contentAlignment = Alignment.Center) {
                 Text("✕", style = HaruType.headline, color = c.text)
             }
-            Text("습관 추가", style = HaruType.title, color = c.text, modifier = Modifier.weight(1f))
+            Text(if (editing) "습관 편집" else "습관 추가", style = HaruType.title, color = c.text, modifier = Modifier.weight(1f))
             PillButton("저장", HabitPalettes[1].fill, Color.White) {
                 val amount: Long? = when (type) {
                     MeasureType.CHECK -> 1L
@@ -77,7 +105,7 @@ fun AddHabitScreen(onSave: (NewHabit) -> String?, onClose: () -> Unit) {
                     NewHabit(
                         name, color, type, if (type == MeasureType.QUANTITY) unit else null,
                         mode, if (mode == GoalMode.WEEKDAYS) weekdays.toList() else null,
-                        if (mode == GoalMode.WEEKLY_COUNT) targetDays else null, amount,
+                        if (mode == GoalMode.WEEKLY_COUNT) targetDays else null, amount, reminders,
                     )
                 )
             }
@@ -89,11 +117,13 @@ fun AddHabitScreen(onSave: (NewHabit) -> String?, onClose: () -> Unit) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 Sticker(name.ifBlank { "습" }, p, DayState.ACHIEVED, 1f, 72.dp)
             }
-            Label("추천 습관")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                presets.forEach { (n, t, ut) ->
-                    Chip(n, selected = false) {
-                        name = n; type = t; unit = ut.first.ifEmpty { unit }; target = ut.second
+            if (!editing) {
+                Label("추천 습관")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    presets.forEach { (n, t, ut) ->
+                        Chip(n, selected = false) {
+                            name = n; type = t; unit = ut.first.ifEmpty { unit }; target = ut.second
+                        }
                     }
                 }
             }
@@ -113,16 +143,26 @@ fun AddHabitScreen(onSave: (NewHabit) -> String?, onClose: () -> Unit) {
                 }
             }
             Label("목표 유형")
+            if (editing) {
+                Text(
+                    "유형과 단위는 바꿀 수 없어요. 다른 유형은 새 습관으로 만들어 주세요.",
+                    style = HaruType.bodyS, color = c.textSub,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("완료", type == MeasureType.CHECK) { type = MeasureType.CHECK }
-                Chip("수량", type == MeasureType.QUANTITY) { type = MeasureType.QUANTITY }
-                Chip("시간", type == MeasureType.DURATION) { type = MeasureType.DURATION }
+                listOf(MeasureType.CHECK to "완료", MeasureType.QUANTITY to "수량", MeasureType.DURATION to "시간").forEach { (t, label) ->
+                    if (!editing || t == type) Chip(label, type == t) { if (!editing) type = t }
+                }
             }
             if (type != MeasureType.CHECK) {
                 Label(if (type == MeasureType.QUANTITY) "목표량과 단위" else "목표 시간(분)")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     HaruTextField(target, { target = it }, if (type == MeasureType.QUANTITY) "8" else "30", Modifier.weight(1f), numeric = true)
-                    if (type == MeasureType.QUANTITY) HaruTextField(unit, { unit = it }, "단위", Modifier.weight(1f))
+                    if (type == MeasureType.QUANTITY) {
+                        if (editing) Box(Modifier.weight(1f).heightIn(min = 56.dp), contentAlignment = Alignment.CenterStart) {
+                            Text(unit, style = HaruType.headline, color = c.text)
+                        } else HaruTextField(unit, { unit = it }, "단위", Modifier.weight(1f))
+                    }
                 }
             }
             Label("주기")
@@ -163,10 +203,41 @@ fun AddHabitScreen(onSave: (NewHabit) -> String?, onClose: () -> Unit) {
                 }
                 Text("주 ${targetDays}일 목표", style = HaruType.bodyS, color = c.textSub)
             }
+
+            Label("알림 시각")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                reminders.forEach { t ->
+                    PillButton("$t ✕", c.surface, c.text) { reminders = reminders - t }
+                }
+                if (reminders.size < 5) PillButton("＋ 시각", p.fill, p.onFill) {
+                    TimePickerDialog(ctx, { _, h, m ->
+                        val t = "%02d:%02d".format(h, m)
+                        if (t !in reminders) reminders = (reminders + t).sorted()
+                    }, 9, 0, true).show()
+                }
+            }
+            if (reminders.isEmpty()) Text("정한 시각에 알려 드려요. 최대 5개까지 추가할 수 있어요.", style = HaruType.bodyS, color = c.textSub)
+
+            if (pending != null) {
+                PopCard(Modifier.fillMaxWidth(), fill = c.stripeBg) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "${pending.effectiveFrom.monthValue}월 ${pending.effectiveFrom.dayOfMonth}일부터 목표가 바뀌어요",
+                            style = HaruType.body, color = c.text,
+                        )
+                        PillButton("예약 취소", c.surface, c.text, onClick = onCancelPending)
+                    }
+                }
+            }
+            if (editing && initial?.hasRecordsNote() == true) {
+                Text("기록이 있어서 목표 변경은 내일(주 목표는 다음 월요일)부터 적용돼요. 지난 기록은 그대로예요.", style = HaruType.bodyS, color = c.textSub)
+            }
             error?.let { Text(it, style = HaruType.body, color = c.errorText) }
         }
     }
 }
+
+private fun Habit.hasRecordsNote() = logs.any { it.amount > 0 || it.skipped }
 
 @Composable
 private fun Label(text: String) {

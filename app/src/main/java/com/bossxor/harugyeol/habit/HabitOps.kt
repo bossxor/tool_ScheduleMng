@@ -8,9 +8,9 @@ import java.util.UUID
 
 class HabitInputException(message: String) : IllegalArgumentException(message)
 
-private fun fail(msg: String): Nothing = throw HabitInputException(msg)
+internal fun fail(msg: String): Nothing = throw HabitInputException(msg)
 
-private fun AppData.mapHabit(id: String, f: (Habit) -> Habit): AppData {
+internal fun AppData.mapHabit(id: String, f: (Habit) -> Habit): AppData {
     if (habits.none { it.id == id }) fail("습관을 찾을 수 없어요")
     return copy(habits = habits.map { if (it.id == id) f(it) else it })
 }
