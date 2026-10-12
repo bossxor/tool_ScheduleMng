@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -305,12 +307,7 @@ private fun HabitCard(
     val shadow = if (c.dark) p.darkTint else c.outline
     var menu by remember { mutableStateOf(false) }
 
-    PopCard(Modifier.fillMaxWidth(), fill = fill, shadow = shadow, onClick = onOpen) {
-        Row(
-            Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    @Composable fun RowScope.info() {
             Sticker(h.name, p, state, progress, iconKey = h.iconKey)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(h.name, style = HaruType.headline, color = c.text, maxLines = 2)
@@ -335,6 +332,8 @@ private fun HabitCard(
                     )
                 }
             }
+    }
+    @Composable fun RowScope.recordActions() {
             if (state != DayState.REST) {
                 RecordButton(h, state, p, actions, onTimer, onInput)
                 Box {
@@ -370,6 +369,17 @@ private fun HabitCard(
                 }
             } else {
                 Spacer(Modifier.width(8.dp))
+            }
+    }
+    val largeText = LocalDensity.current.fontScale >= 1.5f
+    PopCard(Modifier.fillMaxWidth(), fill = fill, shadow = shadow, onClick = onOpen) {
+        Column(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                info()
+                if (!largeText) recordActions()
+            }
+            if (largeText && state != DayState.REST) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                recordActions()
             }
         }
     }
