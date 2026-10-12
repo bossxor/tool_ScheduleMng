@@ -1,5 +1,6 @@
 package com.bossxor.harugyeol
 
+import com.bossxor.harugyeol.habit.Habit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -21,7 +22,7 @@ data class Settings(val theme: String = "SYSTEM")
 data class AppData(
     val schemaVersion: Int = SCHEMA_VERSION,
     val settings: Settings = Settings(),
-    val launchCount: Int = 0, // ponytail: M1-A 저장 검증용, 습관 화면 구현 때 삭제
+    val habits: List<Habit> = emptyList(),
 )
 
 class StoreException(message: String, cause: Throwable? = null) : Exception(message, cause)
