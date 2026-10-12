@@ -221,60 +221,7 @@ fun ArchiveScreen(
 }
 
 @Composable
-fun SettingsScreen(
-    data: AppData, notificationsAllowed: Boolean, onBack: () -> Unit,
-    onSummary: (enabled: Boolean, time: String) -> Unit, onRequestNotifications: () -> Unit,
-) {
-    val c = LocalHaru.current
-    val ctx = LocalContext.current
-    val summary = data.settings.dailySummary
-    val ignoring = ctx.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName)
-
-    Column(Modifier.fillMaxSize().background(c.bg)) {
-        TopBar("설정", onBack)
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            SettingCard("알림 권한") {
-                Text(if (notificationsAllowed) "허용됨" else "꺼져 있어요. 알림을 받으려면 허용해 주세요.", style = HaruType.body, color = c.text)
-                if (!notificationsAllowed) PillButton("권한 요청", HabitPalettes[1].fill, Color.White, onClick = onRequestNotifications)
-            }
-            SettingCard("하루 요약") {
-                Text("정한 시각에 오늘 달성한 습관과 남은 습관을 한 번 알려 드려요.", style = HaruType.bodyS, color = c.textSub)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PillButton(
-                        if (summary.enabled) "켜짐" else "꺼짐",
-                        if (summary.enabled) HabitPalettes[3].fill else c.surface,
-                        if (summary.enabled) Color.White else c.text,
-                    ) {
-                        if (!summary.enabled && !notificationsAllowed) onRequestNotifications()
-                        onSummary(!summary.enabled, summary.time)
-                    }
-                    PillButton("시각 ${summary.time}", c.surface, c.text) {
-                        val (h, m) = summary.time.split(":").map { it.toInt() }
-                        TimePickerDialog(ctx, { _, hh, mm -> onSummary(summary.enabled, "%02d:%02d".format(hh, mm)) }, h, m, true).show()
-                    }
-                }
-            }
-            SettingCard("알림이 늦거나 오지 않을 때") {
-                Text(
-                    if (ignoring) "배터리 사용 제한에서 제외되어 있어요."
-                    else "배터리 절전 때문에 알림이 늦을 수 있어요. 삼성 폰은 ‘배터리 > 백그라운드 사용 제한’에서 하루결을 제외해 주세요.",
-                    style = HaruType.bodyS, color = c.textSub,
-                )
-                if (!ignoring) PillButton("제한 해제 요청", HabitPalettes[2].fill, HabitPalettes[2].onFill) {
-                    ctx.startActivity(
-                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}"))
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingCard(title: String, content: @Composable () -> Unit) {
+fun SettingCard(title: String, content: @Composable () -> Unit) {
     val c = LocalHaru.current
     PopCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

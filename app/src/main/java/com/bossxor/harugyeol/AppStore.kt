@@ -2,6 +2,7 @@ package com.bossxor.harugyeol
 
 import com.bossxor.harugyeol.habit.Habit
 import com.bossxor.harugyeol.habit.HabitTimer
+import com.bossxor.harugyeol.task.Task
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -28,6 +29,7 @@ data class AppData(
     val settings: Settings = Settings(),
     val habits: List<Habit> = emptyList(),
     val timer: HabitTimer? = null,
+    val tasks: List<Task> = emptyList(),
 )
 
 class StoreException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -44,8 +46,30 @@ class AppStore private constructor(private val file: File, initial: AppData) {
         _state.value = next
     }
 
+    private val snapshotFile get() = File(file.parentFile, "snapshot.json")
+
+    /** 현재 데이터를 내부 스냅샷으로 남기고 새 데이터로 통째로 바꾼다 */
+    suspend fun replaceAll(newData: AppData) = mutex.withLock {
+        if (file.exists()) Files.copy(file.toPath(), snapshotFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        write(file, newData)
+        _state.value = newData
+    }
+
+    /** 마지막 스냅샷 시각(없으면 null) */
+    fun snapshotTime(): Long? = snapshotFile.takeIf { it.exists() }?.lastModified()
+
+    /** 스냅샷으로 되돌린다. 되돌리기 전 데이터가 새 스냅샷이 된다. */
+    suspend fun restoreSnapshot(): Boolean = mutex.withLock {
+        if (!snapshotFile.exists()) return false
+        val data = try { json.decodeFromString<AppData>(snapshotFile.readText()) } catch (e: Exception) { return false }
+        Files.copy(file.toPath(), snapshotFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        write(file, data)
+        _state.value = data
+        true
+    }
+
     companion object {
-        private val json = Json { prettyPrint = true; encodeDefaults = true }
+        internal val json = Json { prettyPrint = true; encodeDefaults = true }
 
         /** 파일이 없으면 기본값. 읽을 수 없거나 더 새 버전이면 덮어쓰지 않고 예외를 던진다. */
         fun open(file: File): AppStore {

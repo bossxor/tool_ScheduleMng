@@ -67,7 +67,7 @@ class HabitActions(
 fun HabitsScreen(
     data: AppData, today: LocalDate, actions: HabitActions,
     onAdd: () -> Unit, onOpen: (String) -> Unit, onTimer: (String) -> Unit,
-    onArchive: () -> Unit, onSettings: () -> Unit,
+    onArchive: () -> Unit, banner: String = "",
 ) {
     val c = LocalHaru.current
     val habits = data.habits.filter { it.archivedAt == null }.sortedBy { it.sortOrder }
@@ -97,8 +97,12 @@ fun HabitsScreen(
                     } else {
                         TextAction("순서") { reorder = true }
                         TextAction("보관함", onArchive)
-                        TextAction("설정", onSettings)
                     }
+                }
+            }
+            if (banner.isNotEmpty() && !reorder) item {
+                PopCard(Modifier.fillMaxWidth(), fill = HabitPalettes[1].tint) {
+                    Text(banner, style = HaruType.body, color = HabitPalettes[1].deep, modifier = Modifier.padding(14.dp))
                 }
             }
             if (data.timer != null && timerHabit != null && !reorder) {
