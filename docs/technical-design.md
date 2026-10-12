@@ -15,6 +15,7 @@
 | 알림 | AlarmManager(`USE_EXACT_ALARM`), NotificationManager | 사용자가 정한 시각의 알림 |
 | 파일 | Storage Access Framework | 사용자가 지정한 백업 파일 읽기·쓰기 |
 | 업데이트 | GitHub Releases API, `HttpURLConnection`, PackageInstaller | 추가 의존성 없음 |
+| 글자체·그림 | Jua, Pretendard를 앱에 포함(res/font), 벡터 드로어블(VectorDrawable) | 오프라인 동일 표시, 해상도 무관 |
 | 테스트 | JUnit, Compose UI 테스트 | 날짜 계산·파일 검증·사용 흐름 검증 |
 
 최소 지원 버전은 Android 13/API 33이다. 알림 권한과 `USE_EXACT_ALARM`이 항상 있어 버전 분기가 사라진다.
@@ -67,7 +68,7 @@ flowchart LR
 {
   "schemaVersion": 1,
   "settings": { "theme": "SYSTEM", "dailySummary": { "enabled": true, "time": "20:30" },
-                "autoUpdateCheck": true, "lastUpdateCheckAt": null, "updatePromptAfter": null },
+                "allDayReminderTime": "09:00", "celebrationHaptics": true, "lastCelebrationDate": null },
   "habits": [ { "id": "…", "name": "물 마시기", "measureType": "QUANTITY", "unit": "잔",
                 "startDate": "2026-10-12", "sortOrder": 0, "archivedAt": null,
                 "goals": [ { "effectiveFrom": "2026-10-12", "mode": "DAILY", "targetAmount": 800 } ],
@@ -85,8 +86,8 @@ ID는 UUID 문자열이다. 기록 시각(createdAt·updatedAt·completedAt·del
 
 | 객체 | 필드·제약 |
 |---|---|
-| settings | theme(SYSTEM/LIGHT/DARK), dailySummary{enabled, time}, autoUpdateCheck, lastUpdateCheckAt?, updatePromptAfter? |
-| habits[] | id, name(1~100자), note(최대 20,000자), measureType(CHECK/QUANTITY/DURATION), unit?, startDate, sortOrder, archivedAt?, createdAt, updatedAt, goals[], logs[], reminders[] |
+| settings | theme(SYSTEM/LIGHT/DARK), dailySummary{enabled, time}, allDayReminderTime(`HH:mm`, 기본 09:00), celebrationHaptics, lastCelebrationDate?(전부 달성 효과를 마지막으로 보인 날짜) |
+| habits[] | id, name(1~100자), colorIndex(0~3), iconKey?, note(최대 20,000자), measureType(CHECK/QUANTITY/DURATION), unit?, startDate, sortOrder, archivedAt?, createdAt, updatedAt, goals[], logs[], reminders[] |
 | habits[].goals[] | effectiveFrom(습관 안에서 고유), mode(DAILY/WEEKDAYS/WEEKLY_COUNT), weekdays?, targetDays?, targetAmount |
 | habits[].logs[] | date(습관 안에서 고유), amount, skipped |
 | habits[].reminders[] | `HH:mm`, 습관 안에서 고유, 최대 5개 |
@@ -176,6 +177,12 @@ ID는 UUID 문자열이다. 기록 시각(createdAt·updatedAt·completedAt·del
 - archivedAt 이후 날짜는 기록·알림·통계 대상을 만들지 않는다. 보관 전 기록은 조회·수정·백업할 수 있다.
 - 보관 해제는 archivedAt을 null로 되돌린다. 보관 기간의 대상 날짜는 미기록으로 계산한다.
 
+**스티커**
+
+- 스티커 상태는 저장하지 않는다. 날짜별 스티커는 달성한 날(amount >= 당시 목표)에서, 마일스톤은 연속 달성 최대값이 3·7·30·100 이상인지로 매번 계산한다.
+- colorIndex는 빨강·파랑·노랑·초록 순서 0~3이며 범위를 벗어나면 복원을 거부한다. iconKey는 앱에 포함한 그림 목록의 키이고 없는 키는 기본 그림으로 표시한다.
+- 글자체·그림은 앱 자원이라 업데이트로 바뀌어도 저장 파일에 영향이 없다.
+
 예: 월·수·금 독서는 월·수 완료 시 2회 연속이다. 화요일은 끊김이 아니다. 수요일을 건너뛰고 월·금 완료해도 2회 연속이다.
 주 3일 운동은 같은 날 중복 체크인해도 1일이며 월·수·금 체크인 시 3/3일이다. 토요일 시작이면 첫 주 목표는 2일이다.
 물 8잔 목표에 3잔 기록은 amount=300, targetAmount=800이다. 8잔에 달성하며 9잔은 실제 기록 900을 유지한다.
@@ -197,7 +204,7 @@ ID는 UUID 문자열이다. 기록 시각(createdAt·updatedAt·completedAt·del
 - 모든 날짜·시각은 기기의 현재 시간대 기준이다. 작업·습관에 시간대를 저장하지 않는다.
 - 작업의 dueTime은 현지 벽시계 시각이다. 기기 시간대가 바뀌면 같은 현지 시각으로 알림을 다시 예약한다.
 - 현지 시각을 절대 시각으로 바꾸는 계산은 java.time `ZonedDateTime`에 맡긴다. 한국은 서머타임이 없어 별도 규칙을 두지 않는다.
-- 종일 작업의 알림 기준은 해당 날짜 09:00이다. 알림 설정 화면에 이를 표시한다.
+- 종일 작업의 알림 시각은 settings.allDayReminderTime(기본 09:00)이다. 작업 상세에 이 시각을 표시하고 설정에서 바꾸면 모든 종일 작업 알림을 다시 예약한다.
 - 반복은 예정일 기준이다. 완료한 시각으로 반복 간격을 옮기지 않는다.
 - 완료 시 현재 회차를 occurrences에 추가하고 다음 날짜로 schedule.dueDate를 갱신한다. 한 번의 상태 교체다.
 - 기한 지난 반복을 늦게 완료하면 완료일 이후 첫 회차로 이동한다. 건너뛴 회차를 완료로 집계하지 않는다.
@@ -275,25 +282,36 @@ ID는 UUID 문자열이다. 기록 시각(createdAt·updatedAt·completedAt·del
 
 **확인**
 
-- 앱이 화면에 나올 때 자동 확인이 켜져 있고 마지막 확인 후 24시간이 지났으면 확인한다. 설정의 ‘지금 확인’은 즉시 확인한다.
+- 앱 프로세스가 시작될 때마다(Application 시작 후 첫 화면 표시 시) 한 번 확인한다. 끄는 설정은 없다. 설정의 ‘지금 확인’은 즉시 확인한다.
 - `GET https://api.github.com/repos/bossxor/tool_ScheduleMng/releases/latest`를 호출한다. 이 API는 초안과 사전 릴리스를 돌려주지 않는다.
-- `tag_name`(`vX.Y.Z`)을 현재 versionName과 숫자 단위로 비교해 클 때만 안내한다. 이름이 `.apk`로 끝나는 asset이 정확히 하나여야 한다.
-- ‘나중에’는 updatePromptAfter를 24시간 뒤로 저장한다.
-- 인증 없는 API 호출 한도(IP당 시간당 60회)는 하루 한 번 확인에 충분하다. 저장소가 비공개로 바뀌면 확인이 실패한다.
+- `tag_name`(`vX.Y.Z`)을 현재 versionName과 숫자 단위로 비교해 클 때만 진행한다. 이름이 `.apk`로 끝나는 asset이 정확히 하나여야 한다.
+- 인증 없는 API 호출 한도(IP당 시간당 60회)는 실행 시마다 한 번 확인에 충분하다. 저장소가 비공개로 바뀌면 확인이 실패한다.
 
 **다운로드·검사**
 
-- `HttpURLConnection`으로 `cacheDir/update.apk`에 받는다. 크기 상한은 100MB이며 이어받기는 하지 않는다.
-- `PackageManager.getPackageArchiveInfo`로 packageName이 같고 versionCode가 현재보다 큰지 확인한다. 다르면 설치하지 않는다.
-- 서명 일치는 Android 설치 과정이 강제한다. 불일치로 설치가 실패하면 원인을 안내한다.
+- 새 버전이면 묻지 않고 바로 `HttpURLConnection`으로 `cacheDir/update.apk`에 받는다. 크기 상한은 100MB이며 이어받기는 하지 않는다.
+- 이미 같은 versionCode의 검사된 파일이 있으면 다시 받지 않고 설치 단계로 간다.
+- `PackageManager.getPackageArchiveInfo`로 packageName이 같고 versionCode가 현재보다 큰지 확인한다. 다르면 파일을 지우고 설치하지 않는다.
+- 실패하면 파일을 지우고 다음 실행에서 처음부터 다시 받는다.
 
-**설치**
+**설치 1단계: 앱 내부 설치**
 
 - 설치 전에 6절의 내부 스냅샷을 저장한다. 실패하면 설치하지 않는다.
-- `canRequestPackageInstalls()`가 거짓이면 `ACTION_MANAGE_UNKNOWN_APP_SOURCES` 화면으로 ‘이 출처 허용’을 안내한다.
+- `canRequestPackageInstalls()`가 거짓이면 `ACTION_MANAGE_UNKNOWN_APP_SOURCES` 화면으로 ‘이 출처 허용’을 안내한다. 사용자가 허용하지 않고 돌아오면 2단계로 간다.
 - PackageInstaller 세션으로 설치하고 `setRequireUserAction(USER_ACTION_NOT_REQUIRED)`을 지정한다.
   이 설정은 하루결이 설치 주체(installer of record)일 때만 적용된다. 파일 관리자로 처음 설치했다면 첫 업데이트는 확인이 필요하다. 이후 동작은 실기기에서 확인한다.
-- 설치 후 `MY_PACKAGE_REPLACED`에서 알림을 다시 예약하고 다운로드 파일을 지운다.
+- 세션 결과가 `STATUS_PENDING_USER_ACTION`이면 시스템 확인 화면을 띄운다. 실패 상태(`STATUS_FAILURE*`)나 세션 생성·쓰기 예외면 2단계로 간다. 사용자가 확인 화면에서 취소하면 다음 실행에서 다시 시도한다.
+
+**설치 2단계: APK 직접 설치**
+
+- 데이터 백업 JSON(6절 형식)과 APK를 `MediaStore.Downloads`로 공용 ‘다운로드’ 폴더에 저장한다(`harugyeol-backup-YYYYMMDD.json`, `harugyeol-vX.Y.Z.apk`). API 29 이상이라 저장소 권한이 필요 없다.
+- 저장한 APK의 content URI로 `ACTION_VIEW`(`application/vnd.android.package-archive`, 읽기 권한 부여)를 열어 시스템 설치 화면을 띄운다.
+- 화면을 열 수 없으면 다운로드 폴더의 APK를 눌러 설치하라고 안내한다. 같은 서명이면 덮어 설치로 데이터가 유지된다.
+- 서명 불일치처럼 기존 앱을 지워야 하는 경우, 새로 설치한 뒤 저장해 둔 백업 파일로 복원하도록 안내한다.
+
+**공통**
+
+- 설치 후 `MY_PACKAGE_REPLACED`에서 알림을 다시 예약하고 `cacheDir`의 다운로드 파일을 지운다. 다운로드 폴더의 파일은 사용자가 지운다.
 - 매니페스트 권한: `INTERNET`, `REQUEST_INSTALL_PACKAGES`, `UPDATE_PACKAGES_WITHOUT_USER_ACTION`.
 - 요청에는 표준 HTTP 헤더 외 사용자 데이터를 담지 않는다.
 
@@ -316,7 +334,11 @@ updatedAt만으로 충돌을 해결한다고 가정하지 않는다. 단일 JSON
 - [알림 권한 공식 문서](https://developer.android.com/develop/ui/views/notifications/notification-permission): Android 13 이상 런타임 권한.
 - [SystemClock](https://developer.android.com/reference/android/os/SystemClock), [Settings.Global.BOOT_COUNT](https://developer.android.com/reference/android/provider/Settings.Global#BOOT_COUNT): 부팅 후 경과시간과 부팅 횟수.
 - [PackageInstaller](https://developer.android.com/reference/android/content/pm/PackageInstaller): 앱 설치 세션과 사용자 확인 없는 업데이트 조건.
+- [MediaStore.Downloads](https://developer.android.com/reference/android/provider/MediaStore.Downloads): 권한 없이 공용 다운로드 폴더에 파일 저장.
 - [GitHub 최신 릴리스 API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release): 초안·사전 릴리스를 제외한 최신 릴리스.
 - [자동 백업](https://developer.android.com/identity/data/autobackup): 앱 내부 파일의 Google 백업.
+
+- 그림 자원은 `assets/icons/*.svg` 원본과 `assets/LICENSES.md` 출처 대장으로 관리한다([디자인 시스템](design-system.md) 7절). 빌드는 원본을 Vector Drawable로 변환해 `res/drawable`에 둔다. 글자체와 그림의 출처는 앱의 ‘오픈소스 라이선스’ 화면에서 보여준다.
+- 화면별 구성은 [화면 명세](screen-specs.md)가 기준이다.
 
 구체적인 데이터 구조·기본값·기능 단계는 이 프로젝트의 설계 결정이다.
