@@ -1,6 +1,6 @@
 # 알림·저장·날짜·타이머 5개 수정
 
-기준일: 2026-10-13. 브랜치: `codex/fix-five-verified-issues`.
+작업 시작: 2026-10-13. S26 Ultra 검증: 2026-10-14. 브랜치: `codex/fix-five-verified-issues`.
 이전 재현 기준 코드는 `793991b`이며 [검증 보고](verification-20261013.md)는 당시 이력으로 유지한다.
 
 ## 변경
@@ -19,9 +19,9 @@
 - 단위 테스트 95개, 실패·오류 0. 기존 87개에 관련 회귀 테스트 8개를 추가했다.
 - 릴리스 lint: 오류 0, 경고 21. 경고 전체를 해결했다고 보고하지 않는다.
 - 릴리스 빌드는 R8 축소를 포함하며 현재 컴퓨터에는 사용자 서명 설정이 없어 unsigned APK다. 설치·공개 릴리스는 하지 않았다.
-- 수정 후 Android 런타임 검증은 진행 중이다. USB가 분리되어 S26 Ultra 재검증은 아직 통과 처리하지 않는다.
+- S26 Ultra / Android 17: 별도 검증 앱의 런타임 회귀 검증 통과. [원문 결과](verification-evidence-20261013/android17.txt). 검증 앱은 제거했고 개인 앱은 v0.1.1 / versionCode 3을 유지했다.
 - 로컬 Android 13 소프트웨어 에뮬레이터는 가속 드라이버 없이 부팅을 완료하지 못해 종료했다. 시스템 가속 드라이버나 보안 설정은 변경하지 않았다.
-- GitHub Actions의 Android 13 에뮬레이터에서 별도 패키지로 런타임 회귀 검증을 실행한다. 결과 확인 전 통과로 표시하지 않는다.
+- GitHub Actions의 Android 13 에뮬레이터: 별도 패키지 런타임 회귀 검증 통과. [실행 기록](https://github.com/bossxor/tool_ScheduleMng/actions/runs/38418193681), [원문 결과](verification-evidence-20261013/android13.txt). 검증 대상 제품·진단 코드 커밋은 `5a12593`이며 이후에는 문서와 결과 원문만 추가했다.
 
 ## 런타임 검증 소스
 

@@ -1,0 +1,7 @@
+INSTRUMENTATION_RESULT: blockedSummary=summary blocked; individual OS alarm=1; habit notice=1
+INSTRUMENTATION_RESULT: dailyRearm=consumed alarm advanced; duplicate callback retained next-day alarm
+INSTRUMENTATION_RESULT: dateBoundary=stale yesterday refreshed by production date receiver and record-time guard; clock unchanged
+INSTRUMENTATION_RESULT: delayedAlarm=OS count 1 -> 1; stale callback rejected; startup reset=1; deleted=0
+INSTRUMENTATION_RESULT: status=ALL_FIXED_REGRESSIONS_PASSED
+INSTRUMENTATION_RESULT: timerExit=production TimerScreen disposal checkpoint=26080ms; reboot recovery matches; background checkpoint>=20000ms
+INSTRUMENTATION_CODE: -1
