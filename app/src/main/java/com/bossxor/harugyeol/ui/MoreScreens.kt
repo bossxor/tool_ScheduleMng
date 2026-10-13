@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
@@ -49,15 +53,18 @@ import java.time.LocalDate
 @Composable
 fun TopBar(title: String, onBack: () -> Unit, trailing: @Composable () -> Unit = {}) {
     val c = LocalHaru.current
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp).heightIn(min = 56.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(48.dp).clickable(onClickLabel = "뒤로", onClick = onBack), contentAlignment = Alignment.Center) {
-            Text("←", style = HaruType.headline, color = c.text)
+    Column(Modifier.fillMaxWidth().background(c.surface)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp).heightIn(min = 56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(48.dp).clickable(onClickLabel = "뒤로", onClick = onBack), contentAlignment = Alignment.Center) {
+                Text("←", style = HaruType.headline, color = c.text)
+            }
+            Text(title, style = HaruType.title, color = c.text, maxLines = 1, modifier = Modifier.weight(1f))
+            trailing()
         }
-        Text(title, style = HaruType.title, color = c.text, maxLines = 1, modifier = Modifier.weight(1f))
-        trailing()
+        Box(Modifier.fillMaxWidth().height(1.dp).background(c.stripe.copy(alpha = 0.6f)))
     }
 }
 
@@ -122,12 +129,29 @@ fun TimerScreen(habit: Habit, data: AppData, today: LocalDate, boot: Int, action
     Column(Modifier.fillMaxSize().background(c.bg)) {
         TopBar(habit.name, onBack)
         Column(
-            Modifier.fillMaxSize().padding(24.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
         ) {
-            Sticker(habit.name, p, DayState.PARTIAL, 0f, 72.dp)
-            Text(formatClock(elapsed), style = HaruType.display.copy(fontSize = 56.sp, lineHeight = 64.sp), color = c.text)
+            Column(
+                Modifier.fillMaxWidth().background(c.surface, RoundedCornerShape(28.dp)).padding(horizontal = 20.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                val active = t?.state == TimerState.RUNNING
+                Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawCircle(p.accent(c).copy(alpha = if (active) 0.28f else 0.12f), radius = size.minDimension / 2 - 2.dp.toPx(), style = Stroke(2.dp.toPx()))
+                    }
+                    Sticker(habit.name, p, DayState.PARTIAL, 0f, 72.dp, habit.iconKey)
+                }
+                Text(
+                    when (t?.state) { TimerState.RUNNING -> "집중 중"; TimerState.PAUSED -> "잠시 멈춤"; null -> "집중할 준비가 됐어요" },
+                    style = HaruType.bodyS, color = if (active) p.accent(c) else c.textSub,
+                )
+                Text(formatClock(elapsed), style = HaruType.display.copy(fontSize = 48.sp, lineHeight = 58.sp), color = c.text, textAlign = TextAlign.Center)
+                Text("이번 집중 시간", style = HaruType.caption, color = c.textSub)
+            }
             Text(
                 "오늘 저장된 기록 ${saved / 60}분" + if (t != null) " · 저장하면 더해져요" else "",
                 style = HaruType.body, color = c.textSub, textAlign = TextAlign.Center,

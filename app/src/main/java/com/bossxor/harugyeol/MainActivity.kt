@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -104,6 +105,8 @@ import com.bossxor.harugyeol.ui.HaruType
 import com.bossxor.harugyeol.ui.LocalHaru
 import com.bossxor.harugyeol.ui.PillButton
 import com.bossxor.harugyeol.ui.PopCard
+import com.bossxor.harugyeol.ui.tintBg
+import com.bossxor.harugyeol.ui.accent
 import com.bossxor.harugyeol.ui.SettingsActions
 import com.bossxor.harugyeol.ui.SettingsScreen
 import com.bossxor.harugyeol.ui.TaskFormScreen
@@ -738,30 +741,17 @@ class MainActivity : ComponentActivity() {
 private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
     val c = LocalHaru.current
     val screens = listOf(Screen.Habits, Screen.Tasks, Screen.Calendar, Screen.Settings)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(c.surface)
-            .border(2.dp, c.outline, RoundedCornerShape(0.dp))
-            .height(64.dp),
-    ) {
+    val icons = listOf(R.drawable.ic_nav_habits, R.drawable.ic_nav_tasks, R.drawable.ic_nav_calendar, R.drawable.ic_nav_settings)
+    val p = HabitPalettes[1]
+    Row(Modifier.fillMaxWidth().background(c.surface).border(1.dp, c.outline, RoundedCornerShape(0.dp)).height(72.dp)) {
         tabs.forEachIndexed { i, (label, _) ->
-            val selected = current == screens[i]
-            val p = HabitPalettes[i]
-            Box(
-                Modifier.weight(1f).fillMaxSize().clickable(onClickLabel = label) { onSelect(screens[i]) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    Modifier
-                        .background(if (selected) p.fill else Color.Transparent, RoundedCornerShape(20.dp))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        label, style = HaruType.button,
-                        color = if (selected) p.onFill else c.textSub,
-                    )
+            val active = current == screens[i]
+            Box(Modifier.weight(1f).fillMaxSize().clickable(role = androidx.compose.ui.semantics.Role.Tab, onClickLabel = label) { onSelect(screens[i]) }, contentAlignment = Alignment.Center) {
+                Column(Modifier.background(if (active) p.tintBg(c) else Color.Transparent, RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(icons[i]), contentDescription = null,
+                        modifier = Modifier.size(22.dp), tint = if (active) p.accent(c) else c.textSub)
+                    Text(label, style = HaruType.caption, color = if (active) p.accent(c) else c.textSub)
                 }
             }
         }

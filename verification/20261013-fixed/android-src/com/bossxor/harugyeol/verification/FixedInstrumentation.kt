@@ -129,8 +129,12 @@ class FixedInstrumentation : Instrumentation() {
             targetContext.getSharedPreferences("reminder_keys", 0).getStringSet("keys", emptySet()) == setOf(key)
         }
         check(alarmCount() == 1)
-        Notifier.postHabit(targetContext, data.habits.single(), day)
-        check(nm.activeNotifications.size == 1) { "Habit notice did not post" }
+        val habit = data.habits.single()
+        Notifier.postHabit(targetContext, habit, day)
+        waitFor("habit notice posted") {
+            nm.activeNotifications.any { it.id == Notifier.id(habit.id) && it.notification.channelId == Notifier.CH_HABIT }
+        }
+        check(nm.activeNotifications.size == 1) { "Unexpected notification count after habit post" }
         nm.cancelAll()
         result.putString("blockedSummary", "summary blocked; individual OS alarm=1; habit notice=1")
     }
