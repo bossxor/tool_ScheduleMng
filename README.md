@@ -58,9 +58,9 @@
 
 ## 현재 상태
 
-첫 버전(M1)의 기능 구현과 로컬 릴리스 빌드를 완료했습니다. 85개 단위 테스트와 Galaxy S26 Ultra에서의 덮어 설치·기록 유지 및 주요 동작을 확인했습니다.
+첫 버전(M1)의 기능 구현과 로컬 릴리스 빌드를 완료했습니다. 87개 단위 테스트와 Galaxy S26 Ultra에서의 덮어 설치·기록 유지 및 주요 동작을 확인했습니다.
 
-공개 릴리스와 실제 릴리스를 통한 자동 업데이트, Android 13 실기기·TalkBack·큰 글씨 등 환경별 검증은 남아 있습니다. 상세 내용은 [진행 기록](docs/progress.md)과 [남은 검증](docs/remaining-work.md)을 참고하세요.
+[0.1.1 릴리스](https://github.com/bossxor/tool_ScheduleMng/releases/tag/v0.1.1)를 공개했으며 실제 앱 업데이트와 기록 유지·타이머 재부팅 복구를 확인했습니다. Android 13 별도 기기·TalkBack 전체 음성 탐색 등 환경별 검증은 남아 있습니다. 상세 내용은 [진행 기록](docs/progress.md)과 [남은 검증](docs/remaining-work.md)을 참고하세요.
 
 ## 개발 자료
 
@@ -71,5 +71,5 @@ Kotlin과 Jetpack Compose로 구현하며, 앱 내부 JSON 파일에 데이터�
 - [디자인 시스템](docs/design-system.md)
 - [화면 명세](docs/screen-specs.md)
 - [위젯·잠금화면 지원 범위](docs/widgets-lockscreen-design.md)
-- [0.1.0 릴리스 노트](docs/release-notes-0.1.0.md)
+- [0.1.1 릴리스 노트](docs/release-notes-0.1.1.md)
 - [그림 출처와 라이선스](assets/LICENSES.md)
