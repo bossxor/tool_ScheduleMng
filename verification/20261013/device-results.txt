@@ -1,0 +1,5 @@
+INSTRUMENTATION_RESULT: blockedSummary=habit channel allowed; summary channel blocked; plans=summary only; posted=0
+INSTRUMENTATION_RESULT: delayedAlarm=OS alarms 1 -> 0 with unchanged data; simulated now only
+INSTRUMENTATION_RESULT: habitControl=summary off; habit plan present; posted=1
+INSTRUMENTATION_RESULT: status=ALL_CURRENT_DEFECT_ASSERTIONS_PASSED
+INSTRUMENTATION_CODE: -1
