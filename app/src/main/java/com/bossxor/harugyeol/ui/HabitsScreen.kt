@@ -87,10 +87,13 @@ fun HabitsScreen(
     var reorder by remember { mutableStateOf(false) }
     var dialogHabit by remember { mutableStateOf<Habit?>(null) }
     val timerHabit = data.timer?.habitId
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(habits.isEmpty()) { if (habits.isEmpty()) listState.scrollToItem(0) }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         LazyColumn(
             Modifier.fillMaxSize(),
+            state = listState,
             contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

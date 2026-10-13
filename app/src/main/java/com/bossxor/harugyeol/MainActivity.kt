@@ -296,6 +296,13 @@ class MainActivity : ComponentActivity() {
             val data by store.state.collectAsState()
             HaruTheme(theme = data.settings.theme) {
                 val c = LocalHaru.current
+                androidx.compose.runtime.SideEffect {
+                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = !c.dark
+                        isAppearanceLightNavigationBars = !c.dark
+                    }
+                    window.isNavigationBarContrastEnforced = false
+                }
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Habits) }
                 var calendarDate by remember { mutableStateOf<LocalDate?>(null) }
