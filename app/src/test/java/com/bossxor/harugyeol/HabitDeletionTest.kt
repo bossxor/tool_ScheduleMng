@@ -12,7 +12,7 @@ class HabitDeletionTest {
     private val day = LocalDate.of(2026, 10, 14)
     private fun file() = File(tmp.root, "data.json")
     private fun data() = AppData(habits = listOf(
-        Habit("remove", "삭제 대상", measureType = MeasureType.DURATION, startDate = day, createdAt = 1, updatedAt = 1,
+        Habit("remove", "삭제 대상", measureType = MeasureType.DURATION, unit = "분", startDate = day, createdAt = 1, updatedAt = 1,
             goals = listOf(HabitGoal(day, GoalMode.DAILY, targetAmount = 600)), logs = listOf(HabitLog(day, 20)), reminders = listOf("09:00")),
         Habit("keep", "유지", measureType = MeasureType.CHECK, startDate = day, createdAt = 1, updatedAt = 1,
             goals = listOf(HabitGoal(day, GoalMode.DAILY, targetAmount = 1)), logs = listOf(HabitLog(day, 1)))
