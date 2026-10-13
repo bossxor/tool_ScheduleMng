@@ -44,6 +44,7 @@ class TaskActionReceiver : BroadcastReceiver() {
 
 fun receiveTaskAlarm(receiver: BroadcastReceiver, ctx: Context, intent: Intent) {
     val key = intent.getStringExtra("key") ?: return
+    if (!ReminderScheduler.consume(ctx, key, intent.getLongExtra("at", -1))) return
     val pending = receiver.goAsync()
     CoroutineScope(Dispatchers.IO).launch {
         try {

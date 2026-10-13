@@ -163,6 +163,13 @@ class ManageTimerReminderTest {
         rejects { d.startTimer(d.h().id, today, 0, 1) }
     }
 
+    @Test fun `30초 전 화면 이탈 보존량은 재부팅 복구에 사용된다`() {
+        val base = reading()
+        val d = base.startTimer(base.h().id, today, 1_000, 3).checkpointTimer(26_000, 3).recoverTimer(4)
+        assertEquals(TimerState.PAUSED, d.timer!!.state)
+        assertEquals(25_000L, d.timer!!.accumulatedMs)
+    }
+
     // 알림 계획
     @Test fun `다음 발송 시각은 지금 이후 가장 가까운 시각`() {
         val now = LocalDateTime.of(2026, 10, 12, 10, 0)

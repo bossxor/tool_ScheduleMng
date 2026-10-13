@@ -165,9 +165,10 @@ class AppStore private constructor(private val file: File, initial: AppData, pri
             if (!exists) Files.copy(source.toPath(), File(source.parentFile, "$prefix${UUID.randomUUID()}.json").toPath())
         }
         private fun write(file: File, data: AppData) {
+            val bytes = Backup.encode(data).toByteArray(Charsets.UTF_8)
             val tmp = File(file.parentFile, file.name + ".tmp")
             FileOutputStream(tmp).use {
-                it.write(json.encodeToString(AppData.serializer(), data).toByteArray())
+                it.write(bytes)
                 it.fd.sync()
             }
             Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)

@@ -14,9 +14,15 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val key = intent.getStringExtra("key") ?: return
         if (key.startsWith("task:")) { receiveTaskAlarm(this, ctx, intent); return }
+        val at = intent.getLongExtra("at", -1)
+        if (!ReminderScheduler.consume(ctx, key, at)) return
         val store = try { (ctx.applicationContext as HarugyeolApp).store } catch (_: StoreException) { return }
         val data = store.state.value
         val today = LocalDate.now()
+        if (java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault()).toLocalDate() != today) {
+            ReminderScheduler.rescheduleAll(ctx, data)
+            return
+        }
         if (key == SUMMARY_KEY) {
             if (data.settings.dailySummary.enabled) summaryNotice(data, today)?.let { Notifier.postSummary(ctx, it) }
         } else {
@@ -51,6 +57,8 @@ class ActionReceiver : BroadcastReceiver() {
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val store = try { (ctx.applicationContext as HarugyeolApp).store } catch (_: StoreException) { return }
-        ReminderScheduler.rescheduleAll(ctx, store.state.value)
+        val reset = intent.action in listOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED)
+        if (intent.action == Intent.ACTION_TIME_CHANGED || intent.action == Intent.ACTION_TIMEZONE_CHANGED) ReminderScheduler.resetTimes(ctx)
+        ReminderScheduler.rescheduleAll(ctx, store.state.value, reset = reset)
     }
 }

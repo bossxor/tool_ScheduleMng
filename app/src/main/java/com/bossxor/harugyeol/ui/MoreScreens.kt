@@ -102,7 +102,7 @@ fun TimerScreen(habit: Habit, data: AppData, today: LocalDate, boot: Int, action
     DisposableEffect(view) {
         val previousKeepScreenOn = view.keepScreenOn
         view.keepScreenOn = true
-        onDispose { view.keepScreenOn = previousKeepScreenOn }
+        onDispose { actions.checkpoint(); view.keepScreenOn = previousKeepScreenOn }
     }
 
     // 화면이 열려 있는 동안 1초마다 표시를 갱신하고 30초마다 보존한다

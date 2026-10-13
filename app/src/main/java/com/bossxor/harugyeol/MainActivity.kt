@@ -1,7 +1,10 @@
 package com.bossxor.harugyeol
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -54,7 +57,6 @@ import com.bossxor.harugyeol.habit.addAmount
 import com.bossxor.harugyeol.habit.addHabit
 import com.bossxor.harugyeol.habit.archiveHabit
 import com.bossxor.harugyeol.habit.cancelPendingGoal
-import com.bossxor.harugyeol.habit.checkpointTimer
 import com.bossxor.harugyeol.habit.deleteHabit
 import com.bossxor.harugyeol.habit.discardTimer
 import com.bossxor.harugyeol.habit.editHabit
@@ -149,6 +151,11 @@ class MainActivity : ComponentActivity() {
     private val updateStatus = mutableStateOf("")
     private val banner = mutableStateOf("")
     private lateinit var store: AppStore
+    private val dateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) { refreshToday() }
+    }
+
+    private fun refreshToday(): LocalDate = LocalDate.now().also { today.value = it }
 
     private val notificationLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { notificationsAllowed.value = it }
@@ -329,7 +336,7 @@ class MainActivity : ComponentActivity() {
                             var undo: Pair<Task, Task>? = null
                             store.update { current ->
                                 val before = current.tasks.firstOrNull { it.id == id }
-                                val next = current.setTaskDone(id, done, System.currentTimeMillis(), expectedDate, today.value)
+                                val next = current.setTaskDone(id, done, System.currentTimeMillis(), expectedDate, refreshToday())
                                 val after = next.tasks.firstOrNull { it.id == id }
                                 if (done && before != null && after != null && before != after) undo = before to after
                                 next
@@ -343,9 +350,12 @@ class MainActivity : ComponentActivity() {
                 fun change(f: (AppData) -> AppData) {
                     scope.launch {
                         try {
+                            refreshToday()
                             store.update(f)
                         } catch (e: HabitInputException) {
                             toast(e.message ?: "입력을 확인해 주세요")
+                        } catch (e: BackupException) {
+                            toast(e.message ?: "기록 용량을 확인해 주세요")
                         } catch (e: Exception) {
                             toast("저장하지 못했어요. 다시 시도해 주세요")
                         }
@@ -372,7 +382,7 @@ class MainActivity : ComponentActivity() {
                     resume = { change { it.resumeTimer(SystemClock.elapsedRealtime(), bootCount()) } },
                     save = { sid -> change { it.saveTimer(sid, SystemClock.elapsedRealtime(), bootCount(), nowMs()) } },
                     discard = { sid -> change { it.discardTimer(sid) } },
-                    checkpoint = { change { it.checkpointTimer(SystemClock.elapsedRealtime(), bootCount()) } },
+                    checkpoint = { (application as HarugyeolApp).preserveTimerCheckpoint() },
                 )
                 val settingsActions = SettingsActions(
                     setTheme = { theme -> change { it.copy(settings = it.settings.copy(theme = theme)) } },
@@ -467,7 +477,7 @@ class MainActivity : ComponentActivity() {
                                 onClose = { screen = Screen.Habits },
                                 onCancelPending = {},
                                 onSave = { n ->
-                                    val t = today.value
+                                    val t = refreshToday()
                                     val now = nowMs()
                                     try {
                                         withContext(Dispatchers.IO) {
@@ -508,7 +518,7 @@ class MainActivity : ComponentActivity() {
                                     onClose = { screen = Screen.Detail(h.id) },
                                     onCancelPending = { change { it.cancelPendingGoal(h.id, today.value, nowMs()) } },
                                     onSave = { n ->
-                                        val t = today.value
+                                        val t = refreshToday()
                                         val now = nowMs()
                                         try {
                                             withContext(Dispatchers.IO) {
@@ -679,10 +689,32 @@ class MainActivity : ComponentActivity() {
         recordToOpen.value = intent.getStringExtra(Notifier.EXTRA_HABIT)?.let { id -> runCatching { id to LocalDate.parse(intent.getStringExtra(Notifier.EXTRA_DATE)) }.getOrNull() }
     }
 
+    override fun onStart() {
+        super.onStart()
+        registerReceiver(dateReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }, Context.RECEIVER_NOT_EXPORTED)
+    }
+
+    override fun onStop() {
+        unregisterReceiver(dateReceiver)
+        super.onStop()
+    }
+
+    override fun onPause() {
+        if (::store.isInitialized) (application as HarugyeolApp).preserveTimerCheckpoint()
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
-        today.value = LocalDate.now()
+        refreshToday()
         refreshPermission()
+        if (::store.isInitialized) lifecycleScope.launch(Dispatchers.IO) {
+            try { ReminderScheduler.rescheduleAll(this@MainActivity, store.state.value) } catch (_: Exception) {}
+        }
         if (waitingInstallPermission && !updateRunning && ::store.isInitialized) {
             waitingInstallPermission = false
             if (Updater.canInstall(this)) checkForUpdate(manual = true)
