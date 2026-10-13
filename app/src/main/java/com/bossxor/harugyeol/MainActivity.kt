@@ -504,6 +504,14 @@ class MainActivity : ComponentActivity() {
                                 val h = data.habits.firstOrNull { it.id == s.id }
                                 if (h == null) screen = Screen.Habits else HabitDetailScreen(
                                     h, today.value, detailActions, initialDate = s.date,
+                                    onDelete = {
+                                        try {
+                                            withContext(Dispatchers.IO) { store.update { it.deleteHabit(h.id) } }
+                                            screen = Screen.Habits
+                                            null
+                                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                                        catch (e: Exception) { e.message ?: "삭제하지 못했어요. 다시 시도해 주세요" }
+                                    },
                                     onBack = { screen = if (s.date != null) Screen.Calendar else Screen.Habits },
                                     onEdit = { screen = Screen.EditHabit(h.id) },
                                     onArchive = { change { it.archiveHabit(h.id, nowMs()) }; screen = Screen.Habits },
