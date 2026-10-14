@@ -72,7 +72,6 @@ import com.bossxor.harugyeol.habit.startTimer
 import com.bossxor.harugyeol.habit.unarchiveHabit
 import com.bossxor.harugyeol.reminders.Notifier
 import com.bossxor.harugyeol.reminders.ReminderScheduler
-import com.bossxor.harugyeol.reminders.SummaryNotice
 import com.bossxor.harugyeol.task.saveTaskList
 import com.bossxor.harugyeol.task.deleteTaskList
 import com.bossxor.harugyeol.task.saveTaskTag
@@ -408,11 +407,6 @@ class MainActivity : ComponentActivity() {
                         change { it.copy(settings = it.settings.copy(dailySummary = DailySummary(enabled, time))) }
                     },
                     requestNotifications = { requestNotifications() },
-                    testNotification = {
-                        if (!notificationsAllowed.value) requestNotifications()
-                        Notifier.ensureChannels(this@MainActivity)
-                        Notifier.postSummary(this@MainActivity, SummaryNotice("테스트 알림", "알림이 잘 오고 있어요"))
-                    },
                     backup = {
                         createBackup.launch("harugyeol-backup-${LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)}.json")
                     },

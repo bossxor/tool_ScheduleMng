@@ -34,7 +34,6 @@ class SettingsActions(
     val setAllDayTime: (String) -> Unit,
     val setSummary: (enabled: Boolean, time: String) -> Unit,
     val requestNotifications: () -> Unit,
-    val testNotification: () -> Unit,
     val backup: () -> Unit,
     val restore: () -> Unit,
     val restoreSnapshot: () -> Unit,
@@ -76,7 +75,6 @@ fun SettingsScreen(
             Text(if (notificationsAllowed) "알림이 허용돼 있어요" else "알림이 꺼져 있어요. 허용해야 알림을 받을 수 있어요.", style = HaruType.body, color = c.text)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!notificationsAllowed) PillButton("권한 요청", HabitPalettes[1].fill, Color.White, onClick = actions.requestNotifications)
-                PillButton("테스트 알림 보내기", c.surface, c.text, onClick = actions.testNotification)
             }
         }
 

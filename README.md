@@ -2,7 +2,7 @@
 
 **하루의 습관과 할 일을 한곳에서 관리하는 개인용 Android 앱입니다.**
 
-[프로젝트 대시보드](https://bossxor.github.io/works-dashboard/) · [최신 릴리스](https://github.com/bossxor/tool_ScheduleMng/releases/latest) · [APK 다운로드](https://github.com/bossxor/tool_ScheduleMng/releases/download/v0.1.2/Harugyeol-0.1.2.apk)
+[프로젝트 대시보드](https://bossxor.github.io/works-dashboard/) · [최신 릴리스](https://github.com/bossxor/tool_ScheduleMng/releases/latest) · [APK 다운로드](https://github.com/bossxor/tool_ScheduleMng/releases/download/v0.1.3/Harugyeol-0.1.3.apk)
 
 물 마시기, 독서, 운동처럼 꾸준히 하고 싶은 일은 습관으로 기록하고, 날짜가 정해진 일은 할 일로 관리할 수 있습니다. 오늘의 진행 상황부터 지난 기록까지 달력과 스티커로 확인하세요.
 
@@ -52,7 +52,7 @@
 
 **Android 13 이상**을 지원합니다.
 
-1. [최신 릴리스](https://github.com/bossxor/tool_ScheduleMng/releases/latest)에서 APK를 내려받아 설치합니다. 현재 공개 버전은 **0.1.2**입니다.
+1. [최신 릴리스](https://github.com/bossxor/tool_ScheduleMng/releases/latest)에서 APK를 내려받아 설치합니다. 현재 공개 버전은 **0.1.3**입니다.
 2. Android에서 요청하면 APK를 연 앱의 설치 권한을 허용합니다.
 3. 습관 또는 할 일을 추가하고, 알림을 사용하려면 알림 권한을 허용합니다.
 4. 설정에서 정확한 알람과 배터리 제한 상태를 확인합니다. 기기의 절전 설정에 따라 알림이 지연될 수 있습니다.
@@ -61,7 +61,7 @@
 
 ## 현재 상태
 
-첫 버전(M1)을 구현하고 **0.1.2을 공개 배포**했습니다. 97개 단위 테스트, 서명·R8 릴리스 빌드, GitHub Actions 빌드를 통과했습니다.
+첫 버전(M1)을 구현하고 **0.1.3을 공개 배포**했습니다. 97개 단위 테스트, 서명·R8 릴리스 빌드, GitHub Actions 빌드를 통과했습니다.
 
 Galaxy S26 Ultra에서 실제 앱 업데이트·기록과 타이머 유지·재부팅 복구, 파일 백업·복원·스냅샷 되돌리기, 200% 글씨의 주요 화면을 확인했습니다.
 
@@ -78,5 +78,5 @@ Kotlin과 Jetpack Compose로 구현하며, 앱 내부 JSON 파일에 데이터�
 - [디자인 시스템](docs/design-system.md)
 - [화면 명세](docs/screen-specs.md)
 - [위젯·잠금화면 지원 범위](docs/widgets-lockscreen-design.md)
-- [0.1.2 릴리스 노트](docs/release-notes-0.1.2.md)
+- [0.1.3 릴리스 노트](docs/release-notes-0.1.3.md)
 - [그림 출처와 라이선스](assets/LICENSES.md)

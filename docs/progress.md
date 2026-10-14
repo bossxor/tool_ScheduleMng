@@ -2,6 +2,13 @@
 
 기준일: 2026-10-12. 최근 반영 기준: `b7c0211` (main). 설계는 [제품 설계](product-design.md)·[기술 설계](technical-design.md)·[디자인 시스템](design-system.md)·[화면 명세](screen-specs.md), 단계는 [개발 계획](implementation-plan.md)을 따른다.
 
+## 0.1.3 정식 화면 테스트 기능 제거 (2026-10-14)
+
+- 사용자 지적에 따라 설정의 ‘테스트 알림 보내기’ 버튼, SettingsActions 연결 및 테스트 SummaryNotice 발송 코드를 제거했다. 실제 습관·할 일·하루 요약 알림과 알림 권한 요청은 유지한다.
+- versionName 0.1.3 / versionCode 5. 기존 공개 0.1.2는 보존하고 새 업데이트로 배포한다. README의 다운로드 및 공개 버전 링크를 갱신했다.
+- testDebugUnitTest·assembleRelease·lintRelease 성공. 단위 테스트 97개, 실패·오류 0. lint 오류 0·기존 경고 21. 기존 서명 인증서 일치 확인.
+- 연결된 S26 Ultra에 덮어 설치 성공. 설치 버전 0.1.3/code 5 및 실제 설정의 알림 카드에서 테스트 버튼 부재·권한 요청 유지 확인. 현재 빈 습관 화면과 다크모드 설정을 유지했다.
+- APK 5,430,931 bytes, SHA256 61FCCC92BA331641FEAA220D803D25C4FA5BDC80EA108E46D36466F207D81EC7. [릴리스 노트](release-notes-0.1.3.md).
 ## 0.1.2 오류 수정·습관 삭제·디자인 개편 (2026-10-14)
 
 - PR #1의 오류 수정 브랜치를 확인하고 최신 제품 코드 622b3ec를 main에 병합했다. 알림 예약 유지·요약 채널 차단·20MiB 쓰기 한도·날짜 경계·타이머 이탈 보존 5개 수정이 포함된다. 이전 공개 0.1.1에는 포함되지 않았던 수정이다.

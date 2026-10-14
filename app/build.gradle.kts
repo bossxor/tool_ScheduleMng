@@ -21,8 +21,8 @@ android {
         applicationId = "com.bossxor.harugyeol"
         minSdk = 33
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.1.2"
+        versionCode = 5
+        versionName = "0.1.3"
     }
 
     signingConfigs {
