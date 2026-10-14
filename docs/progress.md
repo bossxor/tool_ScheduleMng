@@ -2,6 +2,19 @@
 
 기준일: 2026-10-12. 최근 반영 기준: `b7c0211` (main). 설계는 [제품 설계](product-design.md)·[기술 설계](technical-design.md)·[디자인 시스템](design-system.md)·[화면 명세](screen-specs.md), 단계는 [개발 계획](implementation-plan.md)을 따른다.
 
+## 0.1.2 오류 수정·습관 삭제·디자인 개편 (2026-10-14)
+
+- PR #1의 오류 수정 브랜치를 확인하고 최신 제품 코드 622b3ec를 main에 병합했다. 알림 예약 유지·요약 채널 차단·20MiB 쓰기 한도·날짜 경계·타이머 이탈 보존 5개 수정이 포함된다. 이전 공개 0.1.1에는 포함되지 않았던 수정이다.
+- 습관 상세의 직접 삭제 버튼·취소 가능한 확인창·저장 성공 후 이동·중복 요청 차단을 추가했다. 타이머가 남은 해당 습관은 삭제를 막는다. 검증 습관 생성→삭제 취소→삭제→빈 화면 복귀를 실기기 확인했다.
+- 사용자 요청으로 연결된 제품 앱 데이터 전체를 초기화했다. 기존 습관·작업·타이머·스냅샷·설정을 제거했고 휴대폰 테스트 백업 3개와 PC의 검증용 백업 JSON도 정리했다. 이는 해당 기기 작업이며 배포 앱에 자동 초기화 코드를 넣지 않았다. 검증 후 실제 습관·할 일은 0개다.
+- 네이비 다크모드·밝은 카드·Pretendard 제목/버튼·부드러운 경계·오늘 진행 요약·하단 아이콘·타이머 화면을 개편했다. 어두운 배너·선택 날짜·태그 대비, 시스템 바 아이콘, 마지막 습관 삭제 후 스크롤도 정리했다. [갱신 디자인 기준](design-system.md).
+- 최종 testDebugUnitTest·assembleRelease·lintRelease 통과. 단위 테스트 97개, 실패·오류 0. lint 오류 0·경고 21. 0.1.1과 동일한 서명 인증서 SHA256 fe0f4be940e25ca32bf34dedb97a12da07f4993c868db890f4b6a80a13854163 확인.
+- Android 13 CI 622b3ec: [실행](https://github.com/bossxor/tool_ScheduleMng/actions/runs/38486927645), [원문](verification-evidence-20261014/android13.txt). S26 Ultra/Android 17 핵심 수정 회귀: [원문](verification-evidence-20261014/android17.txt). 별도 합성 데이터 패키지로 지연 예약·삭제 후 취소·요약 차단 개별 알림·날짜 갱신·화면 이탈/백그라운드 타이머 보존을 확인하고 검증 앱을 제거했다.
+- Android 13의 초기 재실행 실패는 알림 요청 직후 게시 목록을 즉시 확인하는 테스트에 나타났다. 비동기 OS 게시 완료를 기대 알림 ID·채널로 기다리도록 검증 코드를 보완한 뒤 통과했다. 제품 알림 코드를 이 실패 때문에 추가 변경하지 않았다.
+- 최종 서명 APK ADB 덮어 설치 성공. 밝은/어두운 화면·네이비 카드·밝은 시스템 아이콘·주요 빈 화면 200% 글씨와 버튼 접근을 확인했다. 글씨 배율 1.15 복구, 검증 습관 제거 완료. 현재 기기는 다크모드로 설정했다.
+- 릴리스: versionCode 4 / versionName 0.1.2. dist/Harugyeol-0.1.2.apk 5,430,931바이트, SHA256 E14A0FC670F8A27969B8D7A49A54552FCECD7B91E723752D9C15DA615E37059B. [0.1.2 릴리스](https://github.com/bossxor/tool_ScheduleMng/releases/tag/v0.1.2) 및 체크섬으로 배포한다.
+- 실제 Doze 지연·수정 APK의 물리적 재부팅·전체 폼/긴 제목·TalkBack 음성 탐색·설치 실패 경로는 이번의 회귀/주요 화면 확인과 구분해 남긴다.
+
 ## 첫 공개 릴리스·실제 업데이트·재부팅 검증 (2026-10-13)
 
 - v0.1.1 첫 공개 릴리스 게시: https://github.com/bossxor/tool_ScheduleMng/releases/tag/v0.1.1. APK versionCode 3/versionName 0.1.1, 5,412,239바이트, SHA256 CEE052027F9D72F99AB072ABC52336214F4B593C3F65D9DE71E8D97987626195. APK·체크섬만 게시했으며 개인 데이터는 포함하지 않는다.
