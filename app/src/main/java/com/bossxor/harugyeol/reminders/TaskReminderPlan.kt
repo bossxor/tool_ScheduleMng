@@ -10,13 +10,15 @@ data class TaskAlarmPlan(val key: String, val taskId: String, val date: LocalDat
 fun taskAlarmKey(id: String, date: LocalDate, offset: Int) = "task:$id:$date:$offset"
 
 /** 현재 회차만 예약한다. 시간대 변경은 현지 시각을 새 시간대로 다시 계산한다. */
-fun taskAlarmPlans(data: AppData, now: Long, zone: ZoneId = ZoneId.systemDefault(), futureOnly: Boolean = true): List<TaskAlarmPlan> =
+fun taskAlarmPlans(data: AppData, now: Long, zone: ZoneId = ZoneId.systemDefault(), futureOnly: Boolean = true,
+    scheduled: Map<String, Long> = emptyMap()): List<TaskAlarmPlan> =
     data.tasks.filter { it.deletedAt == null && it.completedAt == null }.flatMap { task ->
         val date = task.dueDate ?: return@flatMap emptyList()
         val due = date.atTime(LocalTime.parse(task.dueTime ?: data.settings.allDayReminderTime)).atZone(zone).toInstant().toEpochMilli()
         task.reminders.mapNotNull { reminder ->
             val at = reminder.snoozedUntil ?: (due - reminder.minutesBefore * 60_000L)
-            if (futureOnly && at <= now) null else TaskAlarmPlan(taskAlarmKey(task.id, date, reminder.minutesBefore), task.id, date, reminder.minutesBefore, at)
+            val key = taskAlarmKey(task.id, date, reminder.minutesBefore)
+            if (futureOnly && at <= now && scheduled[key] != at) null else TaskAlarmPlan(key, task.id, date, reminder.minutesBefore, at)
         }
     }
 

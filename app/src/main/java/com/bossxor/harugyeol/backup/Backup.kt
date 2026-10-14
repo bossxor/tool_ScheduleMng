@@ -12,7 +12,9 @@ class BackupException(message: String) : Exception(message)
 object Backup {
     const val MAX_BYTES = 20 * 1024 * 1024
 
-    fun encode(data: AppData): String = AppStore.json.encodeToString(AppData.serializer(), data)
+    fun encode(data: AppData): String = AppStore.json.encodeToString(AppData.serializer(), data).also {
+        if (it.toByteArray(Charsets.UTF_8).size > MAX_BYTES) throw BackupException("파일이 너무 커요. 기록을 정리한 뒤 다시 저장해 주세요.")
+    }
 
     fun decode(text: String): AppData {
         if (text.toByteArray(Charsets.UTF_8).size > MAX_BYTES) throw BackupException("파일이 너무 커요")

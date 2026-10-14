@@ -79,7 +79,7 @@ fun TaskFormScreen(
             if (data.tags.isNotEmpty()) {
                 Text("태그", style = HaruType.headline, color = c.text)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    data.tags.forEach { tag -> PillButton(tag.name, if (tag.id in tagIds) HabitPalettes[2].fill else c.surface, if (tag.id in tagIds) Color.White else c.text) { tagIds = if (tag.id in tagIds) tagIds - tag.id else tagIds + tag.id } }
+                    data.tags.forEach { tag -> PillButton(tag.name, if (tag.id in tagIds) HabitPalettes[2].fill else c.surface, if (tag.id in tagIds) HabitPalettes[2].onFill else c.text) { tagIds = if (tag.id in tagIds) tagIds - tag.id else tagIds + tag.id } }
                 }
             }
             Text("날짜", style = HaruType.headline, color = c.text)

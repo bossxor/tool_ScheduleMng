@@ -26,6 +26,11 @@ object Notifier {
     fun id(habitId: String) = habitId.hashCode()
     private const val SUMMARY_ID = 1
 
+    fun summaryAvailable(ctx: Context): Boolean {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        return nm.areNotificationsEnabled() && nm.getNotificationChannel(CH_SUMMARY)?.importance?.let { it > NotificationManager.IMPORTANCE_NONE } == true
+    }
+
     fun ensureChannels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CH_TASK, "할 일 알림", NotificationManager.IMPORTANCE_HIGH).apply { lockscreenVisibility = Notification.VISIBILITY_PRIVATE })

@@ -1,7 +1,10 @@
 package com.bossxor.harugyeol
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -19,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,7 +58,6 @@ import com.bossxor.harugyeol.habit.addAmount
 import com.bossxor.harugyeol.habit.addHabit
 import com.bossxor.harugyeol.habit.archiveHabit
 import com.bossxor.harugyeol.habit.cancelPendingGoal
-import com.bossxor.harugyeol.habit.checkpointTimer
 import com.bossxor.harugyeol.habit.deleteHabit
 import com.bossxor.harugyeol.habit.discardTimer
 import com.bossxor.harugyeol.habit.editHabit
@@ -102,6 +105,8 @@ import com.bossxor.harugyeol.ui.HaruType
 import com.bossxor.harugyeol.ui.LocalHaru
 import com.bossxor.harugyeol.ui.PillButton
 import com.bossxor.harugyeol.ui.PopCard
+import com.bossxor.harugyeol.ui.tintBg
+import com.bossxor.harugyeol.ui.accent
 import com.bossxor.harugyeol.ui.SettingsActions
 import com.bossxor.harugyeol.ui.SettingsScreen
 import com.bossxor.harugyeol.ui.TaskFormScreen
@@ -149,6 +154,11 @@ class MainActivity : ComponentActivity() {
     private val updateStatus = mutableStateOf("")
     private val banner = mutableStateOf("")
     private lateinit var store: AppStore
+    private val dateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) { refreshToday() }
+    }
+
+    private fun refreshToday(): LocalDate = LocalDate.now().also { today.value = it }
 
     private val notificationLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { notificationsAllowed.value = it }
@@ -286,6 +296,13 @@ class MainActivity : ComponentActivity() {
             val data by store.state.collectAsState()
             HaruTheme(theme = data.settings.theme) {
                 val c = LocalHaru.current
+                androidx.compose.runtime.SideEffect {
+                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = !c.dark
+                        isAppearanceLightNavigationBars = !c.dark
+                    }
+                    window.isNavigationBarContrastEnforced = false
+                }
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Habits) }
                 var calendarDate by remember { mutableStateOf<LocalDate?>(null) }
@@ -329,7 +346,7 @@ class MainActivity : ComponentActivity() {
                             var undo: Pair<Task, Task>? = null
                             store.update { current ->
                                 val before = current.tasks.firstOrNull { it.id == id }
-                                val next = current.setTaskDone(id, done, System.currentTimeMillis(), expectedDate, today.value)
+                                val next = current.setTaskDone(id, done, System.currentTimeMillis(), expectedDate, refreshToday())
                                 val after = next.tasks.firstOrNull { it.id == id }
                                 if (done && before != null && after != null && before != after) undo = before to after
                                 next
@@ -343,9 +360,12 @@ class MainActivity : ComponentActivity() {
                 fun change(f: (AppData) -> AppData) {
                     scope.launch {
                         try {
+                            refreshToday()
                             store.update(f)
                         } catch (e: HabitInputException) {
                             toast(e.message ?: "입력을 확인해 주세요")
+                        } catch (e: BackupException) {
+                            toast(e.message ?: "기록 용량을 확인해 주세요")
                         } catch (e: Exception) {
                             toast("저장하지 못했어요. 다시 시도해 주세요")
                         }
@@ -372,7 +392,7 @@ class MainActivity : ComponentActivity() {
                     resume = { change { it.resumeTimer(SystemClock.elapsedRealtime(), bootCount()) } },
                     save = { sid -> change { it.saveTimer(sid, SystemClock.elapsedRealtime(), bootCount(), nowMs()) } },
                     discard = { sid -> change { it.discardTimer(sid) } },
-                    checkpoint = { change { it.checkpointTimer(SystemClock.elapsedRealtime(), bootCount()) } },
+                    checkpoint = { (application as HarugyeolApp).preserveTimerCheckpoint() },
                 )
                 val settingsActions = SettingsActions(
                     setTheme = { theme -> change { it.copy(settings = it.settings.copy(theme = theme)) } },
@@ -467,7 +487,7 @@ class MainActivity : ComponentActivity() {
                                 onClose = { screen = Screen.Habits },
                                 onCancelPending = {},
                                 onSave = { n ->
-                                    val t = today.value
+                                    val t = refreshToday()
                                     val now = nowMs()
                                     try {
                                         withContext(Dispatchers.IO) {
@@ -494,6 +514,14 @@ class MainActivity : ComponentActivity() {
                                 val h = data.habits.firstOrNull { it.id == s.id }
                                 if (h == null) screen = Screen.Habits else HabitDetailScreen(
                                     h, today.value, detailActions, initialDate = s.date,
+                                    onDelete = {
+                                        try {
+                                            withContext(Dispatchers.IO) { store.update { it.deleteHabit(h.id) } }
+                                            screen = Screen.Habits
+                                            null
+                                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                                        catch (e: Exception) { e.message ?: "삭제하지 못했어요. 다시 시도해 주세요" }
+                                    },
                                     onBack = { screen = if (s.date != null) Screen.Calendar else Screen.Habits },
                                     onEdit = { screen = Screen.EditHabit(h.id) },
                                     onArchive = { change { it.archiveHabit(h.id, nowMs()) }; screen = Screen.Habits },
@@ -508,7 +536,7 @@ class MainActivity : ComponentActivity() {
                                     onClose = { screen = Screen.Detail(h.id) },
                                     onCancelPending = { change { it.cancelPendingGoal(h.id, today.value, nowMs()) } },
                                     onSave = { n ->
-                                        val t = today.value
+                                        val t = refreshToday()
                                         val now = nowMs()
                                         try {
                                             withContext(Dispatchers.IO) {
@@ -679,10 +707,32 @@ class MainActivity : ComponentActivity() {
         recordToOpen.value = intent.getStringExtra(Notifier.EXTRA_HABIT)?.let { id -> runCatching { id to LocalDate.parse(intent.getStringExtra(Notifier.EXTRA_DATE)) }.getOrNull() }
     }
 
+    override fun onStart() {
+        super.onStart()
+        registerReceiver(dateReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }, Context.RECEIVER_NOT_EXPORTED)
+    }
+
+    override fun onStop() {
+        unregisterReceiver(dateReceiver)
+        super.onStop()
+    }
+
+    override fun onPause() {
+        if (::store.isInitialized) (application as HarugyeolApp).preserveTimerCheckpoint()
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
-        today.value = LocalDate.now()
+        refreshToday()
         refreshPermission()
+        if (::store.isInitialized) lifecycleScope.launch(Dispatchers.IO) {
+            try { ReminderScheduler.rescheduleAll(this@MainActivity, store.state.value) } catch (_: Exception) {}
+        }
         if (waitingInstallPermission && !updateRunning && ::store.isInitialized) {
             waitingInstallPermission = false
             if (Updater.canInstall(this)) checkForUpdate(manual = true)
@@ -698,30 +748,17 @@ class MainActivity : ComponentActivity() {
 private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
     val c = LocalHaru.current
     val screens = listOf(Screen.Habits, Screen.Tasks, Screen.Calendar, Screen.Settings)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(c.surface)
-            .border(2.dp, c.outline, RoundedCornerShape(0.dp))
-            .height(64.dp),
-    ) {
+    val icons = listOf(R.drawable.ic_nav_habits, R.drawable.ic_nav_tasks, R.drawable.ic_nav_calendar, R.drawable.ic_nav_settings)
+    val p = HabitPalettes[1]
+    Row(Modifier.fillMaxWidth().background(c.surface).border(1.dp, c.outline, RoundedCornerShape(0.dp)).height(72.dp)) {
         tabs.forEachIndexed { i, (label, _) ->
-            val selected = current == screens[i]
-            val p = HabitPalettes[i]
-            Box(
-                Modifier.weight(1f).fillMaxSize().clickable(onClickLabel = label) { onSelect(screens[i]) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    Modifier
-                        .background(if (selected) p.fill else Color.Transparent, RoundedCornerShape(20.dp))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        label, style = HaruType.button,
-                        color = if (selected) p.onFill else c.textSub,
-                    )
+            val active = current == screens[i]
+            Box(Modifier.weight(1f).fillMaxSize().clickable(role = androidx.compose.ui.semantics.Role.Tab, onClickLabel = label) { onSelect(screens[i]) }, contentAlignment = Alignment.Center) {
+                Column(Modifier.background(if (active) p.tintBg(c) else Color.Transparent, RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(icons[i]), contentDescription = null,
+                        modifier = Modifier.size(22.dp), tint = if (active) p.accent(c) else c.textSub)
+                    Text(label, style = HaruType.caption, color = if (active) p.accent(c) else c.textSub)
                 }
             }
         }

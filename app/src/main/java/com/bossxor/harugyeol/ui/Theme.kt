@@ -33,20 +33,20 @@ class HaruColors(
 
 val LightHaru = HaruColors(
     dark = false,
-    bg = Color(0xFFFFFDF7), surface = Color(0xFFFFFFFF), outline = Color(0xFF2C2C2A),
-    text = Color(0xFF2C2C2A), textSub = Color(0xFF5F5E5A), dashed = Color(0xFF888780),
-    stripeBg = Color(0xFFF1EFE8), stripe = Color(0xFFD3D1C7),
-    achievedBg = Color(0xFFEAF3DE), achievedText = Color(0xFF27500A),
-    errorBg = Color(0xFFFCEBEB), errorText = Color(0xFFA32D2D),
+    bg = Color(0xFFF4F7FC), surface = Color.White, outline = Color(0xFFDBE3EF),
+    text = Color(0xFF19263D), textSub = Color(0xFF607089), dashed = Color(0xFF93A4BD),
+    stripeBg = Color(0xFFEDF2F9), stripe = Color(0xFFD4DEEC),
+    achievedBg = Color(0xFFE4F4EF), achievedText = Color(0xFF216954),
+    errorBg = Color(0xFFFCEBED), errorText = Color(0xFFAD3547),
 )
 
 val DarkHaru = HaruColors(
     dark = true,
-    bg = Color(0xFF1B1B1F), surface = Color(0xFF26262C), outline = Color(0xFFF4F1EA),
-    text = Color(0xFFF4F1EA), textSub = Color(0xFFB4B2A9), dashed = Color(0xFF888780),
-    stripeBg = Color(0xFF2C2C2A), stripe = Color(0xFF444441),
-    achievedBg = Color(0xFF173404), achievedText = Color(0xFFC0DD97),
-    errorBg = Color(0xFF501313), errorText = Color(0xFFF09595),
+    bg = Color(0xFF0D1422), surface = Color(0xFF172238), outline = Color(0xFF2A3852),
+    text = Color(0xFFEAF0FC), textSub = Color(0xFFA5B5CD), dashed = Color(0xFF647899),
+    stripeBg = Color(0xFF1E2B43), stripe = Color(0xFF344561),
+    achievedBg = Color(0xFF1C3936), achievedText = Color(0xFF9AD5C1),
+    errorBg = Color(0xFF422735), errorText = Color(0xFFF1A5B0),
 )
 
 class HabitPalette(
@@ -56,10 +56,10 @@ class HabitPalette(
 
 /** colorIndex 0 빨강, 1 파랑, 2 노랑, 3 초록 */
 val HabitPalettes = listOf(
-    HabitPalette(Color(0xFFE24B4A), Color.White, Color(0xFFA32D2D), Color(0xFFFCEBEB), Color(0xFFF09595), Color(0xFF791F1F)),
-    HabitPalette(Color(0xFF378ADD), Color.White, Color(0xFF185FA5), Color(0xFFE6F1FB), Color(0xFF85B7EB), Color(0xFF0C447C)),
-    HabitPalette(Color(0xFFEF9F27), Color(0xFF412402), Color(0xFF854F0B), Color(0xFFFAEEDA), Color(0xFFFAC775), Color(0xFF633806)),
-    HabitPalette(Color(0xFF639922), Color.White, Color(0xFF3B6D11), Color(0xFFEAF3DE), Color(0xFF97C459), Color(0xFF27500A)),
+    HabitPalette(Color(0xFFBE4C60), Color.White, Color(0xFF9E344B), Color(0xFFFBECEF), Color(0xFFEDA1B0), Color(0xFF3F2938)),
+    HabitPalette(Color(0xFF466ED5), Color.White, Color(0xFF3156B5), Color(0xFFEAF0FF), Color(0xFFA8BFFA), Color(0xFF233555)),
+    HabitPalette(Color(0xFFD9A54D), Color(0xFF342510), Color(0xFF825713), Color(0xFFFFF4DF), Color(0xFFE5C38B), Color(0xFF3B332B)),
+    HabitPalette(Color(0xFF287D68), Color.White, Color(0xFF216954), Color(0xFFE4F4EF), Color(0xFF9AD5C1), Color(0xFF1C3936)),
 )
 
 fun palette(index: Int) = HabitPalettes[index.coerceIn(0, HabitPalettes.lastIndex)]
@@ -79,9 +79,9 @@ private fun style(f: FontFamily, size: TextUnit, line: TextUnit, w: FontWeight =
 
 object HaruType {
     val display = style(Jua, 32.sp, 40.sp)
-    val title = style(Jua, 24.sp, 32.sp)
-    val headline = style(Jua, 18.sp, 26.sp)
-    val button = style(Jua, 16.sp, 24.sp)
+    val title = style(Pretendard, 24.sp, 32.sp, FontWeight.SemiBold)
+    val headline = style(Pretendard, 18.sp, 26.sp, FontWeight.SemiBold)
+    val button = style(Pretendard, 16.sp, 24.sp, FontWeight.SemiBold)
     val body = style(Pretendard, 16.sp, 24.sp)
     val bodyS = style(Pretendard, 14.sp, 20.sp)
     val number = style(Pretendard, 16.sp, 24.sp, FontWeight.SemiBold)
@@ -92,9 +92,35 @@ object HaruType {
 fun HaruTheme(dark: Boolean = isSystemInDarkTheme(), theme: String = "SYSTEM", content: @Composable () -> Unit) {
     val resolvedDark = when (theme) { "DARK" -> true; "LIGHT" -> false; else -> dark }
     val colors = if (resolvedDark) DarkHaru else LightHaru
-    val scheme = if (resolvedDark) androidx.compose.material3.darkColorScheme(surface = colors.surface, background = colors.bg, onSurface = colors.text, onBackground = colors.text)
-        else androidx.compose.material3.lightColorScheme(surface = colors.surface, background = colors.bg, onSurface = colors.text, onBackground = colors.text)
-    androidx.compose.material3.MaterialTheme(colorScheme = scheme) {
+    val base = if (resolvedDark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
+    val scheme = base.copy(
+        primary = if (resolvedDark) HabitPalettes[1].darkText else HabitPalettes[1].fill,
+        onPrimary = if (resolvedDark) colors.bg else Color.White,
+        primaryContainer = HabitPalettes[1].tintBg(colors), onPrimaryContainer = HabitPalettes[1].accent(colors),
+        secondary = HabitPalettes[3].accent(colors), onSecondary = if (resolvedDark) colors.bg else Color.White,
+        secondaryContainer = HabitPalettes[3].tintBg(colors), onSecondaryContainer = HabitPalettes[3].accent(colors),
+        tertiary = HabitPalettes[2].accent(colors), onTertiary = if (resolvedDark) colors.bg else Color.White,
+        tertiaryContainer = HabitPalettes[2].tintBg(colors), onTertiaryContainer = HabitPalettes[2].accent(colors),
+        surface = colors.surface, background = colors.bg, onSurface = colors.text, onBackground = colors.text,
+        surfaceVariant = colors.stripeBg, onSurfaceVariant = colors.textSub,
+        surfaceDim = colors.bg, surfaceBright = colors.surface,
+        surfaceContainerLowest = colors.bg, surfaceContainerLow = colors.surface,
+        surfaceContainer = colors.surface, surfaceContainerHigh = colors.stripeBg,
+        surfaceContainerHighest = if (resolvedDark) Color(0xFF25334C) else Color(0xFFE5ECF6),
+        outline = colors.dashed, outlineVariant = colors.outline, surfaceTint = colors.surface,
+        error = colors.errorText, onError = if (resolvedDark) colors.bg else Color.White,
+        errorContainer = colors.errorBg, onErrorContainer = colors.errorText,
+        inverseSurface = if (resolvedDark) LightHaru.surface else DarkHaru.surface,
+        inverseOnSurface = if (resolvedDark) LightHaru.text else DarkHaru.text,
+        inversePrimary = if (resolvedDark) HabitPalettes[1].fill else HabitPalettes[1].darkText,
+    )
+    val typography = androidx.compose.material3.Typography(
+        displayLarge = HaruType.display, titleLarge = HaruType.title, titleMedium = HaruType.headline,
+        titleSmall = HaruType.button, bodyLarge = HaruType.body, bodyMedium = HaruType.bodyS,
+        bodySmall = HaruType.caption, labelLarge = HaruType.button, labelMedium = HaruType.bodyS,
+        labelSmall = HaruType.caption,
+    )
+    androidx.compose.material3.MaterialTheme(colorScheme = scheme, typography = typography) {
         CompositionLocalProvider(LocalHaru provides colors, content = content)
     }
 }

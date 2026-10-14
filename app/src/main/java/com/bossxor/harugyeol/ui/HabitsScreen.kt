@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -86,16 +87,22 @@ fun HabitsScreen(
     var reorder by remember { mutableStateOf(false) }
     var dialogHabit by remember { mutableStateOf<Habit?>(null) }
     val timerHabit = data.timer?.habitId
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(habits.isEmpty()) { if (habits.isEmpty()) listState.scrollToItem(0) }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         LazyColumn(
             Modifier.fillMaxSize(),
+            state = listState,
             contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("하루결", style = HaruType.title, color = c.text, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("하루결", style = HaruType.title, color = c.text)
+                        Text("${today.monthValue}월 ${today.dayOfMonth}일 · ${"월화수목금토일"[today.dayOfWeek.value - 1]}요일", style = HaruType.bodyS, color = c.textSub)
+                    }
                     if (reorder) {
                         PillButton("완료", HabitPalettes[1].fill, Color.White) { reorder = false }
                     } else {
@@ -105,17 +112,17 @@ fun HabitsScreen(
                 }
             }
             if (banner.isNotEmpty() && !reorder) item {
-                PopCard(Modifier.fillMaxWidth(), fill = HabitPalettes[1].tint) {
-                    Text(banner, style = HaruType.body, color = HabitPalettes[1].deep, modifier = Modifier.padding(14.dp))
+                PopCard(Modifier.fillMaxWidth(), fill = HabitPalettes[1].tintBg(c)) {
+                    Text(banner, style = HaruType.body, color = HabitPalettes[1].accent(c), modifier = Modifier.padding(14.dp))
                 }
             }
             if (data.timer != null && timerHabit != null && !reorder) {
                 val th = habits.firstOrNull { it.id == timerHabit }
                 if (th != null) item {
-                    PopCard(Modifier.fillMaxWidth(), fill = HabitPalettes[2].tint, onClick = { onTimer(th.id) }) {
+                    PopCard(Modifier.fillMaxWidth(), fill = HabitPalettes[2].tintBg(c), onClick = { onTimer(th.id) }) {
                         Text(
                             "${th.name} 타이머가 켜져 있어요 · 눌러서 열기",
-                            style = HaruType.body, color = HabitPalettes[2].deep, modifier = Modifier.padding(14.dp),
+                            style = HaruType.body, color = HabitPalettes[2].accent(c), modifier = Modifier.padding(14.dp),
                         )
                     }
                 }
@@ -125,16 +132,18 @@ fun HabitsScreen(
                     ReorderRow(h, first = h.id == habits.first().id, last = h.id == habits.last().id, actions)
                 }
             } else {
-                item { SummaryCard(habits, states, today, onStickers, onDate) }
+                if (habits.isNotEmpty()) item { SummaryCard(habits, states, today, onStickers, onDate) }
                 if (habits.isEmpty()) {
                     item {
                         Column(
-                            Modifier.fillMaxWidth().padding(top = 48.dp),
+                            Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Text("첫 습관을 만들어 볼까요?", style = HaruType.headline, color = c.text)
-                            PillButton("습관 추가", HabitPalettes[1].fill, Color.White, onClick = onAdd)
+                            HabitArtIcon("state_empty_habits", Modifier.size(148.dp))
+                            Text("작은 시작이 하루를 바꿔요", style = HaruType.headline, color = c.text)
+                            Text("물 한 잔, 짧은 산책처럼\n부담 없는 습관부터 기록해 보세요.", style = HaruType.body, color = c.textSub, textAlign = TextAlign.Center)
+                            PillButton("첫 습관 만들기", HabitPalettes[1].fill, HabitPalettes[1].onFill, onClick = onAdd)
                         }
                     }
                 }
@@ -160,9 +169,9 @@ fun HabitsScreen(
                 Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp)
-                    .size(56.dp)
-                    .background(HabitPalettes[0].fill, CircleShape)
-                    .border(2.dp, c.outline, CircleShape)
+                    .size(60.dp)
+                    .background(HabitPalettes[1].fill, RoundedCornerShape(22.dp))
+                    .semantics { contentDescription = "습관 추가" }
                     .clickable(onClickLabel = "습관 추가", onClick = onAdd),
                 contentAlignment = Alignment.Center,
             ) { Text("＋", style = HaruType.title, color = Color.White) }
@@ -184,7 +193,7 @@ private fun TextAction(text: String, onClick: () -> Unit) {
     }
 }
 
-private fun Modifier.heightIn48() = this.then(Modifier.height(48.dp))
+private fun Modifier.heightIn48() = this.then(Modifier.heightIn(min = 48.dp))
 
 @Composable
 private fun ReorderRow(h: Habit, first: Boolean, last: Boolean, actions: HabitActions) {
@@ -228,21 +237,43 @@ private fun SummaryCard(habits: List<Habit>, states: Map<String, DayState>, toda
     val c = LocalHaru.current
     val counted = habits.filter { states.getValue(it.id).counts }
     val done = counted.count { states.getValue(it.id).isDone }
-    PopCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("$done/${counted.size}", style = HaruType.display, color = c.text)
+    val p = HabitPalettes[1]
+    val progress = dayProgress(habits, today).coerceIn(0f, 1f)
+    val remaining = counted.size - done
+    PopCard(Modifier.fillMaxWidth(), fill = p.tintBg(c)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("오늘의 흐름", style = HaruType.headline, color = c.text, modifier = Modifier.weight(1f))
                 Text(
-                    if (counted.isEmpty()) "오늘은 쉬는 날이에요" else "오늘 달성",
-                    style = HaruType.body, color = c.textSub, modifier = Modifier.padding(bottom = 6.dp),
+                    if (habits.isEmpty()) "새로운 시작" else if (counted.isEmpty()) "쉬어가는 날" else if (remaining == 0) "목표 달성" else "차근차근",
+                    style = HaruType.caption, color = p.accent(c),
+                    modifier = Modifier.background(c.surface, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
-            WeekStrip(habits, today, onDate)
-            PillButton("스티커 모음", c.surface, c.text, onClick = onStickers)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(if (habits.isEmpty()) "작은 시작, 꾸준한 변화" else "$done / ${counted.size}", style = HaruType.display, color = c.text)
+                Text(
+                    if (habits.isEmpty()) "첫 습관을 추가하고 나만의 하루를 만들어 보세요." else if (counted.isEmpty()) "오늘은 쉬면서 다음 하루를 준비해요."
+                    else if (remaining == 0) "오늘의 습관을 모두 달성했어요."
+                    else "오늘 달성 · 남은 습관 ${remaining}개",
+                    style = HaruType.bodyS, color = c.textSub,
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth()) {
+                    Text("기록 진행", style = HaruType.caption, color = c.textSub, modifier = Modifier.weight(1f))
+                    Text("${(progress * 100).toInt()}%", style = HaruType.caption, color = p.accent(c))
+                }
+                ProgressBar(progress, p)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("이번 주 기록", style = HaruType.caption, color = c.textSub)
+                WeekStrip(habits, today, onDate)
+            }
+            PillButton("모은 스티커 살펴보기  →", c.surface, p.accent(c), Modifier.fillMaxWidth(), onClick = onStickers)
         }
     }
 }
-
 @Composable
 private fun WeekStrip(habits: List<Habit>, today: LocalDate, onDate: (LocalDate) -> Unit) {
     val c = LocalHaru.current
@@ -305,7 +336,7 @@ private fun HabitCard(
         state == DayState.SKIPPED -> c.stripeBg
         else -> c.surface
     }
-    val shadow = if (c.dark) p.darkTint else c.outline
+    val shadow = c.outline
     var menu by remember { mutableStateOf(false) }
 
     @Composable fun RowScope.info() {
@@ -374,7 +405,7 @@ private fun HabitCard(
     }
     val largeText = LocalDensity.current.fontScale >= 1.5f
     PopCard(Modifier.fillMaxWidth(), fill = fill, shadow = shadow, onClick = onOpen) {
-        Column(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 info()
                 if (!largeText) recordActions()
@@ -416,8 +447,8 @@ private fun RecordButton(h: Habit, state: DayState, p: HabitPalette, actions: Ha
 private fun ProgressBar(progress: Float, p: HabitPalette) {
     val c = LocalHaru.current
     val shape = RoundedCornerShape(6.dp)
-    Box(Modifier.fillMaxWidth().height(10.dp).background(c.surface, shape).border(2.dp, c.outline, shape)) {
-        if (progress > 0f) Box(Modifier.fillMaxWidth(progress).height(10.dp).background(p.fill, shape))
+    Box(Modifier.fillMaxWidth().height(6.dp).background(c.stripeBg, shape)) {
+        if (progress > 0f) Box(Modifier.fillMaxWidth(progress).height(6.dp).background(p.fill, shape))
     }
 }
 

@@ -31,17 +31,18 @@ fun nextTrigger(time: LocalTime, now: LocalDateTime): LocalDateTime {
  * 예약할 알람 전체. 하루 요약이 켜져 있으면 같은 시각의 개별 알림은 예약하지 않는다.
  * 매일 같은 시각에 울리고, 수신할 때 그날의 상태를 다시 검사해 표시 여부를 정한다.
  */
-fun planAlarms(data: AppData): List<AlarmPlan> {
+fun planAlarms(data: AppData, summaryAvailable: Boolean = true): List<AlarmPlan> {
     val summary = data.settings.dailySummary
+    val useSummary = summary.enabled && summaryAvailable
     val plans = mutableListOf<AlarmPlan>()
     for (h in data.habits) {
         if (h.archivedAt != null) continue
         for (t in h.reminders) {
-            if (summary.enabled && t == summary.time) continue
+            if (useSummary && t == summary.time) continue
             plans += AlarmPlan(habitAlarmKey(h.id, t), h.id, LocalTime.parse(t))
         }
     }
-    if (summary.enabled) plans += AlarmPlan(SUMMARY_KEY, null, LocalTime.parse(summary.time))
+    if (useSummary) plans += AlarmPlan(SUMMARY_KEY, null, LocalTime.parse(summary.time))
     return plans
 }
 

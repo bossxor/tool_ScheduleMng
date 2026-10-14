@@ -82,7 +82,7 @@ private fun TaskRow(t: Task, today: LocalDate, onToggle: (Boolean) -> Unit, onOp
                     Modifier
                         .size(28.dp)
                         .background(if (done) HabitPalettes[3].fill else c.surface, CircleShape)
-                        .border(2.dp, c.outline, CircleShape),
+                        .border(1.dp, c.outline, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) { if (done) Text("✓", style = HaruType.caption, color = Color.White) }
             }
@@ -145,7 +145,7 @@ fun TasksScreen(
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 PillButton("모든 목록", c.surface, c.text) { selectedList = null }
                 data.lists.forEach { category -> PillButton(category.name, if (selectedList == category.id) HabitPalettes[1].fill else c.surface, if (selectedList == category.id) Color.White else c.text) { selectedList = category.id } }
-                data.tags.forEach { tag -> PillButton("#${tag.name}", if (selectedTag == tag.id) HabitPalettes[2].fill else c.surface, if (selectedTag == tag.id) Color.White else c.text) { selectedTag = if (selectedTag == tag.id) null else tag.id } }
+                data.tags.forEach { tag -> PillButton("#${tag.name}", if (selectedTag == tag.id) HabitPalettes[2].fill else c.surface, if (selectedTag == tag.id) HabitPalettes[2].onFill else c.text) { selectedTag = if (selectedTag == tag.id) null else tag.id } }
             }
             HaruTextField(query, { query = it }, "제목·메모 검색", Modifier.fillMaxWidth().padding(16.dp, 8.dp))
             if (query.isNotBlank()) {
@@ -176,7 +176,7 @@ fun TasksScreen(
         }
         Box(
             Modifier.align(Alignment.BottomEnd).padding(20.dp).size(56.dp)
-                .background(HabitPalettes[1].fill, CircleShape).border(2.dp, c.outline, CircleShape)
+                .background(HabitPalettes[1].fill, CircleShape).border(1.dp, c.outline, CircleShape)
                 .clickable(onClickLabel = "할 일 추가", onClick = onAdd),
             contentAlignment = Alignment.Center,
         ) { Text("＋", style = HaruType.title, color = Color.White) }
@@ -278,13 +278,13 @@ fun CalendarScreen(
                                 val sel = date == selected
                                 Column(
                                     Modifier.weight(1f).height(52.dp)
-                                        .background(if (sel) HabitPalettes[1].tint else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                                        .background(if (sel) HabitPalettes[1].tintBg(c) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                                         .border(if (date == today) 2.dp else 0.dp, if (date == today) c.outline else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                                         .clickable(onClickLabel = "${date.monthValue}월 ${date.dayOfMonth}일") { selected = date },
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center,
                                 ) {
-                                    Text(date.dayOfMonth.toString(), style = HaruType.number, color = if (sel) HabitPalettes[1].deep else c.text)
+                                    Text(date.dayOfMonth.toString(), style = HaruType.number, color = if (sel) HabitPalettes[1].accent(c) else c.text)
                                     if (n > 0) Text(if (n > 3) "●●●+" else "●".repeat(n), style = HaruType.caption, color = HabitPalettes[1].fill)
                                 }
                             }

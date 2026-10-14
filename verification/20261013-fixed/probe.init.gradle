@@ -1,0 +1,11 @@
+gradle.beforeProject { p ->
+    p.pluginManager.withPlugin('com.android.application') {
+        def android = p.extensions.getByName('android')
+        p.extensions.getByName('androidComponents').finalizeDsl { dsl ->
+            dsl.defaultConfig.applicationId = 'com.bossxor.harugyeol.verification'
+        }
+        android.sourceSets.getByName('debug').kotlin.srcDir(new File(p.rootDir, 'verification/20261013-fixed/android-src'))
+        android.sourceSets.getByName('debug').manifest.srcFile(new File(p.rootDir, 'verification/20261013-fixed/AndroidManifest.xml'))
+        p.layout.buildDirectory.set(new File(p.rootDir, 'build/verification-fixed/app-artifacts'))
+    }
+}

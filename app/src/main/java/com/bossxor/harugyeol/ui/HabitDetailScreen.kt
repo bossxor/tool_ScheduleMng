@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,6 +48,7 @@ import com.bossxor.harugyeol.habit.pendingGoal
 import com.bossxor.harugyeol.habit.skippedCount
 import com.bossxor.harugyeol.habit.streak
 import com.bossxor.harugyeol.habit.totalRate
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -58,7 +60,7 @@ class DetailActions(
 @Composable
 fun HabitDetailScreen(
     habit: Habit, today: LocalDate, actions: DetailActions, onBack: () -> Unit,
-    onEdit: () -> Unit, onArchive: () -> Unit, onCancelPending: () -> Unit, initialDate: LocalDate? = null,
+    onEdit: () -> Unit, onArchive: () -> Unit, onCancelPending: () -> Unit, initialDate: LocalDate? = null, onDelete: suspend () -> String?,
 ) {
     val c = LocalHaru.current
     val p = palette(habit.colorIndex)
@@ -66,6 +68,10 @@ fun HabitDetailScreen(
     var showMonthRate by remember { mutableStateOf(true) }
     var editing by remember { mutableStateOf<LocalDate?>(null) }
     var confirmArchive by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     val pending = habit.pendingGoal(today)
     val readOnly = habit.archivedAt != null
 
@@ -96,6 +102,7 @@ fun HabitDetailScreen(
                     Text("${habit.startDate.monthValue}월 ${habit.startDate.dayOfMonth}일부터", style = HaruType.bodyS, color = c.textSub)
                 }
             }
+            PillButton("습관 삭제", c.errorBg, c.errorText, Modifier.fillMaxWidth()) { deleteError = null; confirmDelete = true }
             initialDate?.takeIf { !it.isAfter(today) && !it.isBefore(habit.startDate) }?.let { date ->
                 PopCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -157,6 +164,29 @@ fun HabitDetailScreen(
         }
     }
 
+    if (confirmDelete) {
+        Dialog(onDismissRequest = { if (!deleting) confirmDelete = false }) {
+            PopCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("‘${habit.name}’을 삭제할까요?", style = HaruType.headline, color = c.text)
+                    Text("이 습관과 모든 기록이 함께 지워져요. 삭제한 습관은 복구할 수 없어요.", style = HaruType.body, color = c.textSub)
+                    deleteError?.let { Text(it, style = HaruType.bodyS, color = c.errorText) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PillButton("취소", c.surface, c.text, Modifier.weight(1f)) { if (!deleting) confirmDelete = false }
+                        PillButton(if (deleting) "삭제 중" else "삭제", c.errorBg, c.errorText, Modifier.weight(1f)) {
+                            if (!deleting) {
+                                deleting = true
+                                scope.launch {
+                                    try { deleteError = onDelete(); if (deleteError == null) confirmDelete = false }
+                                    finally { deleting = false }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (confirmArchive && !readOnly) {
         Dialog(onDismissRequest = { confirmArchive = false }) {
             PopCard(Modifier.fillMaxWidth()) {
